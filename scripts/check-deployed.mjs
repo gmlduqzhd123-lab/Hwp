@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, expect } from '@playwright/test';
+import { makeHancomPackage } from '../tests/helpers/hancom-package.ts';
 
 const target = new URL(process.env.PAGES_URL ?? '');
 const commit = process.env.EXPECTED_COMMIT ?? '';
@@ -14,6 +15,7 @@ if (target.username || target.password || target.search || target.hash
 if (!target.pathname.endsWith('/')) target.pathname += '/';
 const fixture = await readFile(new URL('../tests/fixtures/01-plain-text.hwpx', import.meta.url));
 const replacement = await readFile(new URL('../tests/fixtures/03-spine-order.hwpx', import.meta.url));
+const hancom = Buffer.from(makeHancomPackage(fixture));
 const browser = await chromium.launch({
   executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
     ?? (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
@@ -82,6 +84,20 @@ try {
   const replacedPath = await (await replacedDownload).path();
   assert.ok(replacedPath, 'The offline replacement did not produce a downloadable file.');
   assert.deepEqual(await readFile(replacedPath), replacement, 'Offline replacement download did not match the new input.');
+
+  await page.getByRole('button', { name: '작업 종료' }).click();
+  await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
+  await page.getByLabel('HWPX 파일 선택', { exact: true }).setInputFiles({
+    name: '한컴구조_합성.hwpx', mimeType: 'application/hwp+zip', buffer: hancom,
+  });
+  await expect(page.getByRole('heading', { name: '한컴구조_합성.hwpx' })).toBeVisible();
+  await expect(page.getByText('5.1.1.0', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const hancomDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '원본 그대로 내려받기' }).click();
+  const hancomPath = await (await hancomDownload).path();
+  assert.ok(hancomPath, 'The documented Hancom structure did not produce a downloadable file.');
+  assert.deepEqual(await readFile(hancomPath), hancom, 'Documented Hancom structure download changed the input.');
   assert.deepEqual(requests, [], 'A prepared app requested HTTP resources while processing documents offline.');
   await context.setOffline(false);
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -97,6 +113,7 @@ try {
   console.log(JSON.stringify({
     url: target.href, commit, worker: 'ready', example: 'real inspection',
     download: 'byte-identical', offlineRestart: 'passed', hashRefresh: 'passed', assetErrors: 0,
+    hancomStructure: 'passed offline with inert metadata',
   }));
 } finally {
   await browser.close();

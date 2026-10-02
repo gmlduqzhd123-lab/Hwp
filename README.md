@@ -13,6 +13,7 @@ React·TypeScript·Vite로 구현한 T-00~T-02 초기 검증판입니다. HWPX�
 - `docs/SUPPORTED_FEATURES.md`: 현재 지원·미지원 범위
 - `docs/IMPLEMENTATION_STATUS.md`: 검증 결과와 T-03 진입 조건
 - `docs/QA_FIXES.md`: 실제 앱 점검에서 재현한 오류와 회귀 수정
+- `docs/HWPX_COMPATIBILITY.md`: 한컴 패키지 입력 호환성과 XML 오류 안내 수정
 - `docs/DEPLOYMENT.md`: GitHub Pages 검증·배포·롤백 안내
 
 ## 실행

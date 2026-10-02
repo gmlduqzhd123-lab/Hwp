@@ -83,4 +83,6 @@ npx playwright test tests/e2e/lifecycle.spec.ts
 
 AC-32·33의 실제 Windows·한컴 한글 개봉·조판·캐시 검수는 **미실행**이다. 실제 한글 검증 없이 자동 교정 지원이나 G0 전체 통과를 주장하지 않는다. 모바일 실기기 검증도 수행하지 않았으며 자동 브라우저의 좁은 화면 확인과 구분한다.
 
-GitHub Pages 설정 변경, 운영 배포와 배포 후 smoke test는 **미실행**이다. 정적 빌드·preview·임의 프로젝트 경로의 브라우저 시험은 실제 Pages 사이트 확인을 대신하지 않는다. 기존 버전 고정·lockfile·TLS·checksum 검증은 유지한다.
+초기 로컬 QA 뒤 후속 작업에서 GitHub Pages Source를 Actions로 전환하고 운영 배포와 공개 사이트 smoke test를 완료했다. [실제 배포 실행](https://github.com/gmlduqzhd123-lab/Hwp/actions/runs/36953070959)과 [배포 절차](DEPLOYMENT.md)를 확인할 수 있다. 정적 빌드·preview·임의 프로젝트 경로의 브라우저 시험은 공개 사이트 검증과 구분한다. 기존 버전 고정·lockfile·TLS·checksum 검증은 유지한다.
+
+사용자가 보고한 `XML_UNSUPPORTED` 입력 실패 이후 공식 한컴 패키지 구조와 비실행 XML 메타데이터의 호환성 오류를 별도로 수정했다. 근거·수정 범위·사용자 파일 미검증 한계는 [HWPX_COMPATIBILITY.md](HWPX_COMPATIBILITY.md)에 기록한다.

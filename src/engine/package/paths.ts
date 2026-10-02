@@ -15,10 +15,18 @@ export function normalizedPathKey(path: string): string {
   return path.replace(/\/$/u, '').normalize('NFC').toLowerCase();
 }
 
-/** Confirmed package-relative href rules; parent traversal and URL syntax are excluded. */
-export function resolvePackageReference(packagePath: string, href: string): string {
+export function isXmlPath(path: string): boolean {
+  return /\.(?:xml|hpf|opf|rdf)$/iu.test(path);
+}
+
+/** Confirmed ZIP-root and package-relative rules; existing targets decide without guessing. */
+export function resolvePackageReference(packagePath: string, href: string, paths: ReadonlySet<string>): string {
   assertSafePath(packagePath, false);
   assertSafePath(href, false);
   const slash = packagePath.lastIndexOf('/');
-  return assertSafePath(`${slash < 0 ? '' : packagePath.slice(0, slash + 1)}${href}`, false);
+  const relative = assertSafePath(`${slash < 0 ? '' : packagePath.slice(0, slash + 1)}${href}`, false);
+  const candidates = new Set([href, relative].filter((path) => paths.has(path)));
+  const resolved = [...candidates][0];
+  if (candidates.size !== 1 || !resolved) invalidPackage();
+  return resolved;
 }

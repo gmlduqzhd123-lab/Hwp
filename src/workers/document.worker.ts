@@ -4,6 +4,7 @@ import { createDocumentSession } from '../engine/session';
 import {
   isJobId,
   isWorkerRequest,
+  createErrorResponse,
   PROTOCOL_VERSION,
   type WorkerResponse,
 } from './protocol';
@@ -18,24 +19,9 @@ const scope = globalThis as unknown as DocumentWorkerScope;
 let ready = false;
 let inspecting = false;
 
-// Parser details can contain untrusted XML, paths, or file names. Never relay them.
-const errorMessages: Record<ErrorCode, string> = {
-  FILE_UNSUPPORTED: '현재 지원 범위의 HWPX 파일만 검사할 수 있습니다. HWP·PDF 변환과 실행 가능 개체는 지원하지 않습니다.',
-  FILE_INVALID_PACKAGE: '파일 구조를 확인하지 못했습니다. 원본은 변경되지 않았습니다.',
-  FILE_ENCRYPTED: '암호화된 파일은 검사할 수 없습니다. 원본은 변경되지 않았습니다.',
-  RESOURCE_LIMIT: '파일이 안전한 처리 한도를 초과했습니다. 원본은 변경되지 않았습니다.',
-  XML_UNSUPPORTED: '안전하게 읽을 수 없는 XML 구조입니다. 원본은 변경되지 않았습니다.',
-  WORKER_FAILED: '문서 검사 준비에 문제가 발생했습니다. 다시 시도해 주세요.',
-};
-
-function replyError(code: ErrorCode, jobId?: string): void {
-  scope.postMessage({
-    type: 'ERROR',
-    protocolVersion: PROTOCOL_VERSION,
-    ...(jobId === undefined ? {} : { jobId }),
-    code,
-    message: errorMessages[code],
-  });
+// Reflect only known reason identifiers; parser text never crosses this boundary.
+function replyError(code: ErrorCode, jobId?: string, reason?: unknown): void {
+  scope.postMessage(createErrorResponse(code, jobId, reason));
 }
 
 function extractJobId(value: unknown): string | undefined {
@@ -81,7 +67,8 @@ scope.addEventListener('message', (event) => {
       });
     })
     .catch((error: unknown) => {
-      replyError(safeError(error).code, request.jobId);
+      const { code, xmlReason } = safeError(error);
+      replyError(code, request.jobId, xmlReason);
     })
     .finally(() => {
       inspecting = false;

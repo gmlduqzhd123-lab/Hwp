@@ -20,16 +20,20 @@
 | `npm run typecheck` | 통과 |
 | `npm run lint` | 통과 |
 | `npm run check:constraints` | 진입점·public 포함 18개 파일·4개 허용 runtime 의존성 검사 통과 |
-| `npm run test:unit` | 96개 통과 (소유권·프로토콜·XML·라이브러리·fixture·빌드 검사) |
-| `npm run test:integration` | 31개 통과 (5개 입력 왕복·해시·Worker transfer·선언 순서·선언 일관성) |
-| `npm run test:security` | 200개 통과 (형식·손상·경로·제한·위조 크기·XML·활성 자원・회귀) |
+| `npm run test:unit` | 132개 통과 (소유권·프로토콜·안전 오류·XML·메타데이터·라이브러리·fixture·빌드 검사) |
+| `npm run test:integration` | 40개 통과 (5개 입력 왕복·해시·Worker transfer·선언 순서·일관성·공식 한컴 패키지 관례) |
+| `npm run test:security` | 259개 통과 (형식·손상·경로·제한·위조 크기·XML·활성 자원·메타데이터·경로 모호성 회귀) |
 | `npm run build` | `/Hwp/` 정적 빌드 성공, source map 없음 |
 | `npm run check:dist` | 번들 Worker·CSP·정적 파일 검사 통과 |
-| `npm run test:e2e` | 실제 운영 브라우저 17개 통과 |
-| `npm run test:pages-path` | `/nested/hwp-check/`로 빌드·dist 검사 후 동일 브라우저 17개 재실행 통과; 기존 기본 빌드의 전체 파일 바이트 복원 확인 |
+| `npm run test:e2e` | 실제 운영 브라우저 19개 통과 |
+| `npm run test:pages-path` | `/nested/hwp-check/`로 빌드·dist 검사 후 동일 브라우저 19개 재실행 통과; 기존 기본 빌드 복원 |
 | `npm run dev -- --port 5174 --strictPort` | HTTP에서 실제 Worker·합성 예시·다운로드 바이트 일치·종료 후 준비·390px 화면 확인 |
 
-서로 다른 자동 시험은 총 344개다. 초기 검증판의 206개에 실제 QA의 회귀 138개를 추가했다. 중첩 경로에서 같은 브라우저 시험을 반복한 횟수는 별도의 새 시험으로 더하지 않았다. 최종 운영 실행에서 실패·skip은 없다. 개발 모드에는 Vite의 모듈·HMR 로딩이 있으므로 운영 전용 오프라인 Worker 재시작 시험을 개발 모드 통과 수로 계산하지 않는다.
+서로 다른 자동 시험은 총 450개다. 초기 검증판 206개, 실제 QA 뒤 344개에 입력 호환성과 안전 오류 회귀 106개를 추가했다. 중첩 경로에서 같은 브라우저 시험을 반복한 횟수는 별도의 새 시험으로 더하지 않았다. 최종 실행에서 실패·skip은 없다. 개발 서버의 직접 확인은 초기 QA 기록이며, 이번 입력 호환성 수정은 운영 빌드·Worker·다운로드와 중첩 경로에서 다시 검증했다.
+
+한컴 공식 자료와 공개 모델을 기준으로 OPF 두 정확 URI, ZIP 루트 경로, header spine, preview/RDF 보조 rootfiles와 역사적 `tagetApplication` 표기를 합성 입력에 반영했다. 비실행 XML 메타데이터 주소는 읽기만 하고, 외부 자원 참조·실행·DTD·이벤트·잘못된 이름공간은 계속 거부한다. 모호한 root/relative 경로, OPF 혼용, 중복·누락과 RDF 자원 제한도 검증했다. 근거와 상세 범위는 [HWPX_COMPATIBILITY.md](HWPX_COMPATIBILITY.md)에 기록했다. 사용자 파일은 받지 않아 그 파일의 성공은 미확인이다.
+
+`npm run test:deployed`의 새 호환성 입력·오프라인 검사·바이트 동일 다운로드 경로를 loopback HTTP preview에서 실제 Chromium으로 확인했다. 원격 공개 주소 검증은 배포 후 같은 스크립트를 GitHub Actions에서 실행한 결과로 확인한다. loopback 성공을 공개 사이트 검증으로 취급하지 않는다.
 
 원본 바이트 소유권은 일반 Uint8Array뿐 아니라 Node Buffer의 `slice()` 공유 동작을 고려해 강제 복사한다. 입력·getter·출력·전송 사본을 변경하거나 detach해도 원본이 유지되는 회귀 시험을 포함한다. XML 요소의 패키지 누적 제한도 추가 OPF 자원의 메모리 증가를 차단한다.
 
