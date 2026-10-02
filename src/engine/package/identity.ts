@@ -50,7 +50,7 @@ function oneChild(parent: XmlElement, elements: readonly XmlElement[], local: st
   return match;
 }
 
-export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: ReadonlyMap<string, XmlSummary>): { sectionPaths: string[]; formatVersion: string } {
+export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: ReadonlyMap<string, XmlSummary>): { headerPath: string; sectionPaths: string[]; formatVersion: string } {
   const version = documents.get('version.xml');
   if (!rootIs(version, 'HCFVersion', PACKAGE_NAMESPACES.version)) invalidPackage();
   // Hancom's public model also writes the historical spelling "tagetApplication".
@@ -97,6 +97,7 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
   const manifestPaths = new Set<string>();
   const declaredSections = new Set<string>();
   let header: XmlSummary | undefined;
+  let headerPath: string | undefined;
   for (const item of items) {
     const id = item.attributes.id;
     if (!id || itemsById.has(id)) invalidPackage();
@@ -112,10 +113,11 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
     if (isHeader) {
       if (header) invalidPackage();
       header = summary;
+      headerPath = path;
     }
     if (isSection) declaredSections.add(path);
   }
-  if (!header) invalidPackage();
+  if (!header || !headerPath) invalidPackage();
   const sectionPaths: string[] = [];
   const seenSpinePaths = new Set<string>();
   const seenSections = new Set<string>();
@@ -135,5 +137,5 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
   const sectionCount = header.root.attributes.secCnt;
   if (headerVersion !== undefined && headerVersion !== version.root.attributes.xmlVersion) invalidPackage();
   if (sectionCount !== undefined && (!/^\d{1,10}$/u.test(sectionCount) || Number(sectionCount) !== sectionPaths.length)) invalidPackage();
-  return { sectionPaths, formatVersion: versionParts.join('.') };
+  return { headerPath, sectionPaths, formatVersion: versionParts.join('.') };
 }

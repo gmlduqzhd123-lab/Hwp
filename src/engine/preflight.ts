@@ -2,11 +2,14 @@ import { Uint8ArrayReader, ZipReader } from '@zip.js/zip.js/lib/zip-core-native.
 import { EngineError } from '../domain/errors';
 import { RESOURCE_LIMITS, type ResourceLimits } from '../domain/limits';
 import type { PreflightReport } from '../domain/preflight';
+import { INSPECTION_MAX_ENTRY_PATH_LENGTH, type DocumentInspection } from '../domain/document';
+import { inspectDocument } from './inspection';
 import { invalidPackage, resourceLimit, unsupportedFile } from './package/errors';
 import { inspectPackageIdentity, isOpfNamespace, PACKAGE_NAMESPACES, type XmlSummary } from './package/identity';
 import { isXmlPath } from './package/paths';
 import { scanZipMetadata, validateLimits } from './package/metadata';
-import { validateXml } from './xml/validate';
+import { validateXml, type XmlDocument } from './xml/validate';
+import { indexXml, type XmlIndex } from './xml/index';
 
 const HWP_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
 const MIMETYPE = new TextEncoder().encode('application/hwp+zip');
@@ -16,7 +19,7 @@ function inspectFileType(bytes: Uint8Array, fileName: string): void {
 }
 
 /** Every entry is CRC-checked sequentially; binary resources never become retained buffers. */
-export async function preflight(input: Uint8Array, fileName: string, inputLimits: Readonly<ResourceLimits> = RESOURCE_LIMITS): Promise<PreflightReport> {
+async function readPackage(input: Uint8Array, fileName: string, inputLimits: Readonly<ResourceLimits>, visitXml?: (path: string, bytes: Uint8Array, document: XmlDocument) => void): Promise<{ report: PreflightReport; headerPath: string }> {
   const limits = Object.freeze({ ...inputLimits });
   validateLimits(limits);
   if (input.byteLength > limits.maxInputBytes) resourceLimit();
@@ -76,12 +79,16 @@ export async function preflight(input: Uint8Array, fileName: string, inputLimits
         if (!root) invalidPackage();
         const needsIdentityElements = root.uri === PACKAGE_NAMESPACES.container || isOpfNamespace(root.uri);
         documents.set(entry.filename, { root, ...(needsIdentityElements ? { identityDocument: document } : {}) });
+        visitXml?.(entry.filename, xmlBytes, document);
         xmlCount += 1;
       }
     }
     if (actualTotal !== metadata.uncompressedBytes) invalidPackage();
     const identity = inspectPackageIdentity(paths, documents);
-    return { entryCount: entries.length, uncompressedBytes: actualTotal, xmlCount, ...identity, supportLevel: 'INSPECT_ONLY' };
+    return {
+      headerPath: identity.headerPath,
+      report: { entryCount: entries.length, uncompressedBytes: actualTotal, xmlCount, sectionPaths: identity.sectionPaths, formatVersion: identity.formatVersion, supportLevel: 'INSPECT_ONLY' },
+    };
   } catch (error) {
     if (streamFailure) throw streamFailure;
     if (error instanceof EngineError) throw error;
@@ -89,4 +96,42 @@ export async function preflight(input: Uint8Array, fileName: string, inputLimits
   } finally {
     await reader.close();
   }
+}
+
+/** Package-only callers retain the existing bounded report API. */
+export async function preflight(input: Uint8Array, fileName: string, inputLimits: Readonly<ResourceLimits> = RESOURCE_LIMITS): Promise<PreflightReport> {
+  return (await readPackage(input, fileName, inputLimits)).report;
+}
+
+/** Read structure only after every ZIP entry and the package identity pass. */
+export async function inspectHwpx(input: Uint8Array, fileName: string, inputLimits: Readonly<ResourceLimits> = RESOURCE_LIMITS): Promise<{ report: PreflightReport; inspection: DocumentInspection }> {
+  const limits = Object.freeze({ ...inputLimits });
+  const indexes = new Map<string, XmlIndex>();
+  let retainedNodes = 0;
+  let retainedTextLength = 0;
+  const { report, headerPath } = await readPackage(input, fileName, limits, (path, bytes, document) => {
+    const root = document.elements[0];
+    if (!root || !((root.uri === PACKAGE_NAMESPACES.head && root.local === 'head') || (root.uri === PACKAGE_NAMESPACES.section && root.local === 'sec'))) return;
+    if (path.length > INSPECTION_MAX_ENTRY_PATH_LENGTH) resourceLimit();
+    const index = indexXml(bytes, limits);
+    retainedNodes += index.elements.length;
+    for (const element of index.elements) {
+      for (const child of element.children) {
+        if (child.kind === 'element') continue;
+        retainedNodes += 1;
+        retainedTextLength += child.text.length;
+      }
+    }
+    // Bound retained reading data across all entries, including extra roots.
+    if (retainedNodes > limits.maxXmlElements || retainedTextLength > limits.maxXmlTextLength) resourceLimit();
+    indexes.set(path, index);
+  });
+  const header = indexes.get(headerPath);
+  if (!header) invalidPackage();
+  const sections = report.sectionPaths.map((path) => {
+    const index = indexes.get(path);
+    if (!index) invalidPackage();
+    return { path, index };
+  });
+  return { report, inspection: inspectDocument({ header: { path: headerPath, index: header }, sections }, limits) };
 }

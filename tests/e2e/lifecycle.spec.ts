@@ -274,7 +274,7 @@ test('the real Worker bounds overlapping inspection requests during delayed hash
     try {
       await new Promise<void>((resolve) => {
         worker.onmessage = (event: MessageEvent<{ type: string }>) => { if (event.data.type === 'READY') resolve(); };
-        worker.postMessage({ type: 'INIT', protocolVersion: 1 });
+        worker.postMessage({ type: 'INIT', protocolVersion: 2 });
       });
       await new Promise<void>((resolve) => {
         worker.onmessage = (event: MessageEvent<{ type: string; jobId?: string; code?: string }>) => {
@@ -283,8 +283,8 @@ test('the real Worker bounds overlapping inspection requests during delayed hash
         };
         const first = new Uint8Array(bytes).buffer;
         const second = new Uint8Array(bytes).buffer;
-        worker.postMessage({ type: 'INSPECT', protocolVersion: 1, jobId: 'first', fileName: 'one.hwpx', bytes: first }, [first]);
-        worker.postMessage({ type: 'INSPECT', protocolVersion: 1, jobId: 'overlap', fileName: 'two.hwpx', bytes: second }, [second]);
+        worker.postMessage({ type: 'INSPECT', protocolVersion: 2, jobId: 'first', fileName: 'one.hwpx', bytes: first }, [first]);
+        worker.postMessage({ type: 'INSPECT', protocolVersion: 2, jobId: 'overlap', fileName: 'two.hwpx', bytes: second }, [second]);
       });
       await new Promise<void>((resolve) => {
         worker.onmessage = (event: MessageEvent<{ type: string; jobId?: string; code?: string }>) => {
@@ -292,7 +292,7 @@ test('the real Worker bounds overlapping inspection requests during delayed hash
           resolve();
         };
         const next = new Uint8Array(bytes).buffer;
-        worker.postMessage({ type: 'INSPECT', protocolVersion: 1, jobId: 'sequential', fileName: 'next.hwpx', bytes: next }, [next]);
+        worker.postMessage({ type: 'INSPECT', protocolVersion: 2, jobId: 'sequential', fileName: 'next.hwpx', bytes: next }, [next]);
       });
       return result;
     } finally { worker.terminate(); }

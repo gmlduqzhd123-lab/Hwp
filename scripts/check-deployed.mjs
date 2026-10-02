@@ -15,6 +15,7 @@ if (target.username || target.password || target.search || target.hash
 if (!target.pathname.endsWith('/')) target.pathname += '/';
 const fixture = await readFile(new URL('../tests/fixtures/01-plain-text.hwpx', import.meta.url));
 const replacement = await readFile(new URL('../tests/fixtures/03-spine-order.hwpx', import.meta.url));
+const tableFixture = await readFile(new URL('../tests/fixtures/04-simple-table.hwpx', import.meta.url));
 const hancom = Buffer.from(makeHancomPackage(fixture));
 const browser = await chromium.launch({
   executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
@@ -64,6 +65,11 @@ try {
   await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
   await expect(page.getByText('예시 문서', { exact: true })).toBeVisible();
   await expect(page.getByText('5.1.0.0', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '문서 구조 보기', exact: true })).toBeVisible();
+  await expect(page.locator('.inspector-paragraph')).toHaveCount(2);
+  await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text').first()).toHaveText('합성 연구 보고서');
+  await page.locator('.inspector-paragraph').first().locator('summary').click();
+  await expect(page.locator('.inspector-paragraph').first().getByText('11 pt', { exact: true })).toBeVisible();
   const requested = page.waitForEvent('download');
   await page.getByRole('button', { name: '원본 그대로 내려받기' }).click();
   const download = await requested;
@@ -79,6 +85,9 @@ try {
   });
   await expect(page.getByRole('heading', { name: '배포검증_합성.hwpx' })).toBeVisible();
   await expect(page.locator('.report-grid > div').filter({ has: page.locator('dt', { hasText: '선언된 구역' }) }).locator('dd')).toHaveText(/^3개$/);
+  await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text')).toHaveText('선언 순서 첫 번째');
+  await page.getByLabel('구역 선택', { exact: true }).selectOption({ index: 2 });
+  await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text')).toHaveText('선언 순서 세 번째');
   const replacedDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: '원본 그대로 내려받기' }).click();
   const replacedPath = await (await replacedDownload).path();
@@ -98,6 +107,21 @@ try {
   const hancomPath = await (await hancomDownload).path();
   assert.ok(hancomPath, 'The documented Hancom structure did not produce a downloadable file.');
   assert.deepEqual(await readFile(hancomPath), hancom, 'Documented Hancom structure download changed the input.');
+
+  await page.getByRole('button', { name: '작업 종료' }).click();
+  await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
+  await page.getByLabel('HWPX 파일 선택', { exact: true }).setInputFiles({
+    name: '단순표_합성.hwpx', mimeType: 'application/hwp+zip', buffer: tableFixture,
+  });
+  await expect(page.getByRole('heading', { name: '단순표_합성.hwpx' })).toBeVisible();
+  await page.getByRole('button', { name: '표 보기', exact: true }).click();
+  await expect(page.locator('.inspector-table')).toHaveCount(1);
+  assert.deepEqual(await page.locator('.inspector-cell-table .inspector-document-text').allTextContents(), ['첫째 칸', '둘째 칸', '셋째 칸', '넷째 칸']);
+  const tableDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '원본 그대로 내려받기' }).click();
+  const tablePath = await (await tableDownload).path();
+  assert.ok(tablePath, 'The table inspection did not produce a downloadable file.');
+  assert.deepEqual(await readFile(tablePath), tableFixture, 'Table inspection changed the original bytes.');
   assert.deepEqual(requests, [], 'A prepared app requested HTTP resources while processing documents offline.');
   await context.setOffline(false);
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -114,6 +138,7 @@ try {
     url: target.href, commit, worker: 'ready', example: 'real inspection',
     download: 'byte-identical', offlineRestart: 'passed', hashRefresh: 'passed', assetErrors: 0,
     hancomStructure: 'passed offline with inert metadata',
+    documentReading: 'paragraphs, character size, spine order and table cells passed offline',
   }));
 } finally {
   await browser.close();
