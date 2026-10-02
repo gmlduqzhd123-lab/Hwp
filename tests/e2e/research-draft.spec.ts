@@ -141,7 +141,7 @@ test('an offline real Worker generates corrected research roles and preserves th
   page.on('pageerror', (error) => errors.push(error.message));
   await context.setOffline(true);
   await select(page);
-  await expect(page.getByText('2026 전국 운영계획 참고 · 최종 제출 공문·서식 확인 필요', { exact: true })).toBeVisible();
+  await expect(page.getByText('전국 공식 자료 확인', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /2026 수업혁신사례연구대회 전국 운영계획 · 교육청 공식 게시본/u }))
     .toHaveAttribute('href', 'https://www.edus.or.kr/web/board/fileDownload/1748.do');
   expect(await page.locator('.draft-source-text').allTextContents()).toEqual(paragraphs(fixture).map((paragraph) => paragraph.text));
@@ -207,7 +207,7 @@ test('editing draft settings invalidates prior generated output while browsing s
   expect(paragraphs(competition.bytes).map((paragraph) => paragraph.text)).toContain('연구형태: 개인연구');
   await page.getByRole('button', { name: '논문 참고 구성', exact: true }).click();
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
-  await expect(page.getByText('기관 서식 미지정 · 참고용 논문 구성', { exact: true })).toBeVisible();
+  await expect(page.getByText('개인 참고 · 공식 기준 아님', { exact: true })).toBeVisible();
   await generate(page);
   const paper = await download(page, '생성한 초안 내려받기');
   expect(paper.name).toBe('논문_작성초안.hwpx');

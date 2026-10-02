@@ -1,0 +1,11 @@
+.draft-custom-settings { min-width: 0; border: 1px solid #d7dfce; background: #f9fbf5; padding: 20px; border-radius: 8px; margin: 22px 0; }
+.draft-custom-settings legend { font-size: 16px; color: #465f39; font-weight: 650; padding: 0 7px; }
+.draft-custom-settings > p { font-size: 12px; line-height: 1.9; color: #667d58; margin-bottom: 15px; }
+.draft-custom-settings h4 { color: #536a45; font-size: 13px; margin: 22px 0 12px; }
+.draft-custom-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px 18px; }
+.draft-custom-grid.margins { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.draft-custom-grid label { color: #627954; font-size: 12px; line-height: 1.8; min-width: 0; }
+.draft-custom-grid input { display: block; width: 100%; min-height: 42px; padding: 9px 11px; margin-top: 6px; border: 1px solid #cedac3; border-radius: 6px; font: inherit; font-size: 14px; color: #3d5730; background: white; }
+.draft-custom-grid input:focus-visible { outline: 3px solid var(--orange); outline-offset: 4px; }
+.draft-custom-settings > p.draft-custom-invalid { color: #925b34; padding: 12px 15px; background: #fff1e8; border: 1px solid #e6cdb9; border-radius: 6px; margin: 18px 0 0; }
+@media(max-width:680px) { .draft-custom-settings { padding: 17px 15px; } .draft-custom-grid,.draft-custom-grid.margins { grid-template-columns: 1fr; gap: 13px; } }
