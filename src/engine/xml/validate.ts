@@ -21,6 +21,7 @@ export interface XmlDocument {
 const XMLNS_URI = 'http://www.w3.org/2000/xmlns/';
 const XSI_URI = 'http://www.w3.org/2001/XMLSchema-instance';
 const RDF_URI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+const HP_URI = 'http://www.hancom.co.kr/hwpml/2011/paragraph';
 // Hancom's public model uses the slash form; the OPF standard uses the other.
 // These are explicit supported names, never prefix or arbitrary URI normalization.
 const OPF_URIS = new Set(['http://www.idpf.org/2007/opf', 'http://www.idpf.org/2007/opf/']);
@@ -119,7 +120,8 @@ interface ExpandedName {
 
 /**
  * These exact XML metadata roles describe values; this reader never resolves
- * schema hints, dereferences RDF identifiers, renders markup or fetches URLs.
+ * schema hints, dereferences RDF identifiers or namespace selectors, renders
+ * markup or fetches URLs.
  * Other attributes, including resource href/src/path, keep their rejection rule.
  */
 function isInertMetadataAttribute(
@@ -134,6 +136,10 @@ function isInertMetadataAttribute(
   if (OPF_URIS.has(tag.uri) && tag.local === 'meta'
     && parent?.uri === tag.uri && parent.local === 'metadata'
     && attribute.uri === '' && attribute.local === 'content') return true;
+
+  if (tag.uri === HP_URI && tag.local === 'case'
+    && parent?.uri === HP_URI && parent.local === 'switch'
+    && attribute.uri === HP_URI && attribute.local === 'required-namespace') return true;
 
   if (root?.uri !== RDF_URI || root.local !== 'RDF' || tag.uri !== RDF_URI || attribute.uri !== RDF_URI) return false;
   if (tag.local === 'Description' && attribute.local === 'about') return true;

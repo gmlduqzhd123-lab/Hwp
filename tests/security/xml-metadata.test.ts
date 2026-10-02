@@ -6,6 +6,7 @@ const encode = (source: string): Uint8Array => new TextEncoder().encode(source);
 const XSI = 'http://www.w3.org/2001/XMLSchema-instance';
 const RDF = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
 const OPF = 'http://www.idpf.org/2007/opf/';
+const HP = 'http://www.hancom.co.kr/hwpml/2011/paragraph';
 const URL = 'https://outside.invalid/PRIVATE_METADATA_MARKER';
 
 function rejected(input: string | Uint8Array, reason: XmlUnsupportedReason): void {
@@ -57,6 +58,32 @@ describe('inert metadata cannot grant a general external resource exception', ()
     `<rdf:RDF xmlns:rdf="${RDF}" xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"><rdf:Description><hp:img rdf:resource="${URL}"/></rdf:Description></rdf:RDF>`,
   ])('limits the RDF exception to exact subject/type identifier roles (%#)', (source) => {
     rejected(source, 'EXTERNAL_REFERENCE');
+  });
+
+  it.each([
+    `<hp:switch xmlns:hp="urn:spoof"><hp:case hp:required-namespace="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}" xmlns:x="urn:spoof"><x:case hp:required-namespace="${URL}"/></hp:switch>`,
+    `<x:switch xmlns:x="urn:spoof" xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}"/></x:switch>`,
+    `<hp:p xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}"/></hp:p>`,
+    `<hp:case xmlns:hp="${HP}" hp:required-namespace="${URL}"/>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:case required-namespace="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}" xmlns:x="urn:spoof"><hp:case x:required-namespace="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:default hp:required-namespace="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:p hp:required-namespace="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:p><hp:case hp:required-namespace="${URL}"/></hp:p></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}" href="${URL}"/></hp:switch>`,
+    `<hp:switch xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}" src="${URL}"/></hp:switch>`,
+  ])('limits HWPX namespace selectors to the exact qualified case attribute and direct switch parent (%#)', (source) => {
+    rejected(source, 'EXTERNAL_REFERENCE');
+  });
+
+  it('inspects active content and resource references inside every switch branch', () => {
+    rejected(`<hp:switch xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}">` +
+      '<hp:script/></hp:case></hp:switch>', 'ACTIVE_CONTENT');
+    rejected(`<hp:switch xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}" onclick="execute()"/>` +
+      '</hp:switch>', 'EVENT_ATTRIBUTE');
+    rejected(`<hp:switch xmlns:hp="${HP}"><hp:case hp:required-namespace="${URL}"/>` +
+      `<hp:default><hp:img src="${URL}"/></hp:default></hp:switch>`, 'EXTERNAL_REFERENCE');
   });
 
   it('keeps prefixed external resource attributes blocked even when their spelling resembles metadata', () => {

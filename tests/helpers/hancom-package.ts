@@ -35,7 +35,15 @@ export function makeHancomPackage(input: Uint8Array, options: HancomPackageOptio
   entries['Contents/content.hpf'] = encode(packageXml);
   const xmlVersion = options.xmlVersion ?? '1.5';
   entries['version.xml'] = encode(read('version.xml').replace('micro="0"', 'micro="1"').replace('xmlVersion="1.5"', `xmlVersion="${xmlVersion}"`));
-  entries['Contents/header.xml'] = encode(read('Contents/header.xml').replace('version="1.5"', `version="${xmlVersion}"`));
+  let headerXml = read('Contents/header.xml').replace('version="1.5"', `version="${xmlVersion}"`);
+  if (options.inertMetadata !== false) {
+    const headPrefix = /<([^\s:]+):head\b/u.exec(headerXml)?.[1];
+    if (!headPrefix) throw new Error('Trusted synthetic header is missing.');
+    // Namespace choice metadata documented by Hancom Compatibility.cpp; it is
+    // an identifier and this inspection path never downloads a feature schema.
+    headerXml = headerXml.replace(`</${headPrefix}:head>`, `<hp:switch xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/paragraph"/><hp:default/></hp:switch></${headPrefix}:head>`);
+  }
+  entries['Contents/header.xml'] = encode(headerXml);
   if (options.auxiliaryRootfiles !== false) {
     entries['Preview/PrvText.txt'] = encode('공개 합성 미리보기');
     const about = options.inertMetadata === false ? '' : 'https://example.invalid/synthetic-document';
