@@ -1,6 +1,7 @@
 import { getErrorMessage, isErrorCode, isXmlUnsupportedReason, type ErrorCode, type XmlUnsupportedReason } from '../domain/errors';
 import type { PreflightReport } from '../domain/preflight';
 import type { DocumentInspection } from '../domain/document';
+import { isResearchDraftOptions, type ResearchDraftOptions, type ResearchDraftResult } from '../domain/research';
 
 export const PROTOCOL_VERSION = 2 as const;
 
@@ -17,7 +18,15 @@ export interface InspectRequest {
   fileName: string;
 }
 
-export type WorkerRequest = InitRequest | InspectRequest;
+export interface DraftRequest {
+  type: 'DRAFT';
+  protocolVersion: typeof PROTOCOL_VERSION;
+  jobId: string;
+  bytes: ArrayBuffer;
+  options: ResearchDraftOptions;
+}
+
+export type WorkerRequest = InitRequest | InspectRequest | DraftRequest;
 
 export interface ReadyResponse {
   type: 'READY';
@@ -41,7 +50,14 @@ export interface ErrorResponse {
   xmlReason?: XmlUnsupportedReason;
 }
 
-export type WorkerResponse = ReadyResponse | ReportResponse | ErrorResponse;
+export interface DraftResponse {
+  type: 'DRAFT_READY';
+  protocolVersion: typeof PROTOCOL_VERSION;
+  jobId: string;
+  result: Omit<ResearchDraftResult, 'bytes'> & { bytes: ArrayBuffer };
+}
+
+export type WorkerResponse = ReadyResponse | ReportResponse | DraftResponse | ErrorResponse;
 
 /** Only bounded opaque IDs may be reflected in a response. */
 export function isJobId(value: unknown): value is string {
@@ -67,6 +83,7 @@ export function isWorkerRequest(value: unknown): value is WorkerRequest {
   const request = value as Record<string, unknown>;
   if (request.protocolVersion !== PROTOCOL_VERSION) return false;
   if (request.type === 'INIT') return true;
+  if (request.type === 'DRAFT') return isJobId(request.jobId) && request.bytes instanceof ArrayBuffer && isResearchDraftOptions(request.options);
   return request.type === 'INSPECT'
     && isJobId(request.jobId)
     && request.bytes instanceof ArrayBuffer

@@ -113,6 +113,8 @@ export interface InspectionTextSegment {
   text: string;
   elementName: string | null;
   sourceSpan: SourceSpan;
+  /** A strictly recognized layout-only control, never text or editing permission. */
+  layoutControl?: true;
 }
 export interface InspectionRun extends InspectionNode {
   paragraphId: string;

@@ -1,6 +1,7 @@
 import { safeError, type ErrorCode } from '../domain/errors';
 import { RESOURCE_LIMITS } from '../domain/limits';
 import { createInspectionSession } from '../engine/session';
+import { createResearchDraft } from '../engine/draft';
 import {
   isJobId,
   isWorkerRequest,
@@ -12,7 +13,7 @@ import {
 // Keep the Worker boundary explicit without mixing DOM and WebWorker global libs.
 interface DocumentWorkerScope {
   addEventListener(type: 'message', listener: (event: MessageEvent<unknown>) => void): void;
-  postMessage(message: WorkerResponse): void;
+  postMessage(message: WorkerResponse, transfer?: Transferable[]): void;
 }
 
 const scope = globalThis as unknown as DocumentWorkerScope;
@@ -58,6 +59,21 @@ scope.addEventListener('message', (event) => {
   // the Worker returns a plain reading model within this tab. Original bytes,
   // file names and hashes stay private; no source XML or cyclic index is sent.
   inspecting = true;
+  if (request.type === 'DRAFT') {
+    const input = new Uint8Array(request.bytes);
+    void createResearchDraft(input, request.options)
+      .then((result) => {
+        const bytes = result.bytes.buffer;
+        scope.postMessage({ type: 'DRAFT_READY', protocolVersion: PROTOCOL_VERSION, jobId: request.jobId,
+          result: { ...result, bytes } }, [bytes]);
+      })
+      .catch((error: unknown) => {
+        const { code, xmlReason } = safeError(error);
+        replyError(code, request.jobId, xmlReason);
+      })
+      .finally(() => { input.fill(0); inspecting = false; });
+    return;
+  }
   void createInspectionSession(new Uint8Array(request.bytes), request.fileName)
     .then((session) => {
       scope.postMessage({

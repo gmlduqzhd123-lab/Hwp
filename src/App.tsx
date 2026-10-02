@@ -5,6 +5,8 @@ import { RESOURCE_LIMITS } from './domain/limits';
 import type { PreflightReport } from './domain/preflight';
 import type { DocumentInspection } from './domain/document';
 import DocumentInspector from './features/DocumentInspector';
+import ResearchDraftPanel from './features/ResearchDraftPanel';
+import type { ResearchDraftOptions, ResearchDraftResult } from './domain/research';
 import { PROTOCOL_VERSION } from './workers/protocol';
 import type { WorkerRequest, WorkerResponse } from './workers/protocol';
 import InlineDocumentWorker from './workers/document.worker.ts?worker&inline';
@@ -12,7 +14,7 @@ import exampleUrl from '../tests/fixtures/01-plain-text.hwpx?url&inline';
 
 type Route = 'start' | 'workspace' | 'help';
 type Readiness = 'preparing' | 'ready' | 'failed';
-type Phase = 'idle' | 'reading' | 'checking';
+type Phase = 'idle' | 'reading' | 'checking' | 'drafting';
 const PREPARATION_TIMEOUT_MS = 20_000;
 
 interface LocalDocument {
@@ -91,6 +93,10 @@ function App() {
   const [error, setError] = useState<Notice | null>(null);
   const [downloadStatus, setDownloadStatus] = useState<string | null>(null);
   const [restart, setRestart] = useState(0);
+  const [draftResult, setDraftResult] = useState<ResearchDraftResult | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const draftResultRef = useRef<ResearchDraftResult | null>(null);
+  const draftPendingRef = useRef<{ jobId: string; sourceJobId: string } | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const acceptedRef = useRef<LocalDocument | null>(null);
   const pendingRef = useRef<PendingDocument | null>(null);
@@ -101,6 +107,13 @@ function App() {
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const busy = phase !== 'idle';
   const canSelect = readiness === 'ready' && !busy;
+
+  function invalidateDraft() {
+    draftResultRef.current?.bytes.fill(0);
+    draftResultRef.current = null;
+    setDraftResult(null);
+    setDraftError(null);
+  }
 
   function navigate(nextRoute: Route) {
     window.location.hash = `/${nextRoute}`;
@@ -172,6 +185,8 @@ function App() {
       pendingRef.current?.bytes.fill(0);
       pendingRef.current = null;
       activeRequestRef.current = false;
+      if (draftPendingRef.current) setDraftError('초안 생성 기능이 중단되었습니다. 준비를 다시 시도해 주세요.');
+      draftPendingRef.current = null;
       setPhase('idle');
       setReadiness('failed');
       setError({ code: 'WORKER_FAILED', message: ERROR_MESSAGES.WORKER_FAILED });
@@ -187,9 +202,14 @@ function App() {
         : new InlineDocumentWorker();
       workerRef.current = worker;
       worker.onmessage = (event: MessageEvent<WorkerResponse>) => {
-        if (stopped || workerRef.current !== worker) return;
         const response = event.data;
+        const discardDraft = () => {
+          if (response?.type === 'DRAFT_READY' && response.result?.bytes instanceof ArrayBuffer
+            && draftResultRef.current?.bytes.buffer !== response.result.bytes) new Uint8Array(response.result.bytes).fill(0);
+        };
+        if (stopped || workerRef.current !== worker) { discardDraft(); return; }
         if (!response || response.protocolVersion !== PROTOCOL_VERSION) {
+          discardDraft();
           fail();
           return;
         }
@@ -202,8 +222,24 @@ function App() {
           fail();
           return;
         }
+        const draftPending = draftPendingRef.current;
+        if (draftPending && response.jobId === draftPending.jobId) {
+          if (acceptedRef.current?.jobId !== draftPending.sourceJobId) { discardDraft(); return; }
+          if (response.type === 'DRAFT_READY') {
+            const result = { ...response.result, bytes: new Uint8Array(response.result.bytes) };
+            draftResultRef.current = result;
+            setDraftResult(result);
+            setDraftError(null);
+          } else if (response.type === 'ERROR') {
+            setDraftError('초안이 검증을 통과하지 못했습니다. 원본은 그대로 보관 중입니다. 문단 배치와 지원 범위를 확인해 주세요.');
+          } else return;
+          draftPendingRef.current = null;
+          activeRequestRef.current = false;
+          setPhase('idle');
+          return;
+        }
         const pending = pendingRef.current;
-        if (!pending || response.jobId !== pending.jobId) return;
+        if (!pending || response.jobId !== pending.jobId) { discardDraft(); return; }
         if (response.type === 'REPORT') {
           const accepted = { ...pending, report: response.report, inspection: response.inspection };
           acceptedRef.current?.bytes.fill(0);
@@ -211,6 +247,7 @@ function App() {
           pendingRef.current = null;
           activeRequestRef.current = false;
           setDocument(accepted);
+          invalidateDraft();
           setPhase('idle');
           setError(null);
           setDownloadStatus(null);
@@ -256,6 +293,7 @@ function App() {
     acceptedRef.current?.bytes.fill(0);
     pendingRef.current?.bytes.fill(0);
     exampleRef.current?.fill(0);
+    draftResultRef.current?.bytes.fill(0);
     for (const [timer, url] of downloadUrls.current) {
       window.clearTimeout(timer);
       URL.revokeObjectURL(url);
@@ -375,6 +413,8 @@ function App() {
     workerRef.current = null;
     pendingRef.current?.bytes.fill(0);
     pendingRef.current = null;
+    if (draftPendingRef.current) setDraftError('초안 생성을 취소했습니다. 원본과 검토한 분류는 유지됩니다.');
+    draftPendingRef.current = null;
     setPhase('idle');
     setReadiness('preparing');
     setError(null);
@@ -391,6 +431,8 @@ function App() {
     pendingRef.current?.bytes.fill(0);
     acceptedRef.current = null;
     pendingRef.current = null;
+    draftPendingRef.current = null;
+    invalidateDraft();
     setDocument(null);
     setPhase('idle');
     setReadiness('preparing');
@@ -425,6 +467,44 @@ function App() {
     setDownloadStatus('다운로드를 요청했습니다. 저장한 파일은 한글에서 직접 열어 확인해 주세요.');
   }
 
+  function generateDraft(options: ResearchDraftOptions) {
+    const accepted = acceptedRef.current;
+    const worker = workerRef.current;
+    if (!accepted || !worker || !canSelect || activeRequestRef.current) return;
+    invalidateDraft();
+    const jobId = `draft_${++jobCounter.current}`;
+    draftPendingRef.current = { jobId, sourceJobId: accepted.jobId };
+    activeRequestRef.current = true;
+    setPhase('drafting');
+    const copy = accepted.bytes.slice().buffer;
+    const request: WorkerRequest = { type: 'DRAFT', protocolVersion: PROTOCOL_VERSION, jobId, bytes: copy, options };
+    try {
+      worker.postMessage(request, [copy]);
+    } catch {
+      draftPendingRef.current = null;
+      activeRequestRef.current = false;
+      setPhase('idle');
+      setDraftError('초안 생성 기능을 시작하지 못했습니다. 준비를 다시 시도해 주세요.');
+      setReadiness('failed');
+      worker.terminate();
+      workerRef.current = null;
+    }
+  }
+
+  function downloadDraft() {
+    const result = draftResultRef.current;
+    if (!result || busy || activeRequestRef.current) return;
+    const url = URL.createObjectURL(new Blob([result.bytes.slice().buffer], { type: 'application/hwp+zip' }));
+    const anchor = window.document.createElement('a');
+    anchor.href = url;
+    anchor.download = result.kind === 'competition' ? '수업혁신사례연구대회_작성초안.hwpx' : '논문_작성초안.hwpx';
+    window.document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    const timer = window.setTimeout(() => { URL.revokeObjectURL(url); downloadUrls.current.delete(timer); }, 30_000);
+    downloadUrls.current.set(timer, url);
+  }
+
   const readinessText = readiness === 'ready' ? '로컬 검사 준비 완료' : readiness === 'preparing' ? '검사 기능 준비 중' : '검사 기능 준비 실패';
   const picker = (
     <label className={`button primary file-button ${!canSelect ? 'disabled' : ''}`}>
@@ -443,7 +523,7 @@ function App() {
           {document && <a href="#/workspace" aria-current={route === 'workspace' ? 'page' : undefined}>작업 문서</a>}
           <a href="#/help" aria-current={route === 'help' ? 'page' : undefined}>지원 범위</a>
         </nav>
-        <span className="version-tag">검사 전용 시험판</span>
+        <span className="version-tag">검사·초안 시험판</span>
       </header>
 
       <main id="main" tabIndex={-1} className={`main-content ${route === 'workspace' ? 'workspace-content' : ''}`}>
@@ -451,11 +531,11 @@ function App() {
         {routeNotice && <p className="notice" role="status">{routeNotice}</p>}
         {error && <div className="error-notice" role="alert"><strong>{error.message}</strong><span>오류 코드: {error.code}. {document ? '이번 파일의 검사는 완료되지 않았습니다. 이전에 확인한 문서는 작업 화면에 그대로 보관 중입니다.' : '원본 파일은 변경되지 않았습니다.'}</span></div>}
         {readiness === 'failed' && <div className="recovery-actions"><button className="button secondary" onClick={() => { setError(null); setReadiness('preparing'); setRestart((value) => value + 1); }}>준비 다시 시도</button><a href="#/help">도움말 보기</a></div>}
-        {busy && <div className="processing" role="status"><span className="spinner" aria-hidden="true" /><div><strong>{phase === 'reading' ? '파일을 메모리에서 읽고 있습니다' : 'HWPX 패키지와 XML을 검사하고 있습니다'}</strong><p>진행 중에는 새 파일을 선택할 수 없습니다.</p></div><button className="button secondary" onClick={cancel}>검사 취소</button></div>}
+        {busy && phase !== 'drafting' && <div className="processing" role="status"><span className="spinner" aria-hidden="true" /><div><strong>{phase === 'reading' ? '파일을 메모리에서 읽고 있습니다' : 'HWPX 패키지와 XML을 검사하고 있습니다'}</strong><p>진행 중에는 새 파일을 선택할 수 없습니다.</p></div><button className="button secondary" onClick={cancel}>검사 취소</button></div>}
 
         {route === 'start' && <>
           <section className="hero">
-            <div className="hero-copy"><p className="eyebrow">HWPX 사전 검사</p><h1 ref={headingRef} tabIndex={-1}>원본을 지키는<br />첫 번째 확인.</h1><p className="hero-description">문서를 열기 전, 파일 구조를 먼저 살펴보세요.<br />원본은 그대로 두고 확인된 파일의 사본을 내려받습니다.</p><div className="scope-tags"><span>파일 구조 검사</span><span>원본 그대로 저장</span><span>로그인 없이</span></div></div>
+            <div className="hero-copy"><p className="eyebrow">HWPX 사전 검사</p><h1 ref={headingRef} tabIndex={-1}>원본을 지키는<br />첫 번째 확인.</h1><p className="hero-description">파일 구조를 확인하고 줄글을 보고서 초안으로 정리하세요.<br />원본은 그대로 두고 새 HWPX 문서를 만듭니다.</p><div className="scope-tags"><span>보고서·논문 초안</span><span>원본 그대로 보관</span><span>로그인 없이</span></div></div>
             <div className="file-card" onDragOver={onDragOver} onDrop={onDrop} aria-label="HWPX 파일 가져오기">
               <div className="file-illustration" aria-hidden="true"><span className="paper-label">HWPX</span><i /><i /><i /><span className="paper-check">✓</span></div>
               <h2>확인할 문서를 가져오세요</h2><p>HWPX 파일 한 개 · 최대 25 MB<br />이곳에 파일을 끌어 놓아도 됩니다.</p>{picker}<button className="example-button" onClick={chooseExample} disabled={!canSelect}>예시 문서로 체험 <span aria-hidden="true">↗</span></button><p className="example-caption">실제 학생 정보가 없는 합성 예시입니다.</p>
@@ -463,7 +543,7 @@ function App() {
           </section>
           <section className="principles" aria-label="처리 원칙">
             <article><span className="principle-number">01</span><h2>문서는 외부로 보내지 않아요</h2><p>파일 내용은 브라우저 메모리에서 처리합니다. 원문·파일명·문서 해시를 지속 저장하지 않습니다.</p></article>
-            <article><span className="principle-number">02</span><h2>내용과 서식을 함께 읽어요</h2><p>ZIP·XML 구조를 확인하고 문단·표의 내용과 서식 참조를 읽습니다. 자동 교정과 한글 쪽 배치 미리보기는 아직 제공하지 않습니다.</p></article>
+            <article><span className="principle-number">02</span><h2>줄글을 보고서 초안으로</h2><p>원문 문단을 연구대회 보고서나 논문 구성으로 자동 분류합니다. 배치를 검토한 뒤 서식을 적용한 새 HWPX 초안을 내려받으세요.</p></article>
             <article><span className="principle-number">03</span><h2>마지막 확인은 한글에서</h2><p>사전 검사 성공은 실제 한글 조판 검증을 뜻하지 않습니다. 저장한 문서를 한글에서 열어 확인해 주세요.</p></article>
           </section>
         </>}
@@ -474,10 +554,16 @@ function App() {
             <section className="document-summary panel"><div className="panel-heading"><span className="small-file-icon" aria-hidden="true">H</span><div><div className="inline-badges"><span className="badge">검사 전용</span>{document.example && <span className="badge example-badge">예시 문서</span>}</div><h2>{document.name}</h2><p>{readableBytes(document.bytes.byteLength)} · HWPX</p></div></div><div className="report-heading"><h3>패키지 검사 결과</h3><span className="check-label">사전 검사 완료</span></div><dl className="report-grid"><div><dt>패키지 항목</dt><dd>{document.report.entryCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>XML 파일</dt><dd>{document.report.xmlCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>선언된 구역</dt><dd>{document.report.sectionPaths.length.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>해제 후 크기</dt><dd className="size-value">{readableBytes(document.report.uncompressedBytes)}</dd></div></dl><div className="format-row"><span>파일 형식 버전</span><strong>{document.report.formatVersion}</strong></div><details className="section-details"><summary>패키지에 선언된 구역 경로</summary><ul>{document.report.sectionPaths.map((path) => <li key={path}>{path}</li>)}</ul></details><p className="muted-note">문단·표의 내용과 읽을 수 있는 서식은 아래 문서 구조 보기에서 확인하세요.</p></section>
             <aside className="save-panel panel"><p className="eyebrow">원본 그대로 내보내기</p><h2>바꾸지 않은 사본을<br />내려받습니다.</h2><p>입력 파일과 동일한 바이트로 새 파일을 만듭니다. 서식이나 내용은 수정하지 않습니다.</p><div className="verification-row"><span>패키지 사전 검사</span><strong>완료</strong></div><div className="verification-row"><span>한글 화면 검수</span><strong className="unverified">미실행</strong></div><button className="button primary download-button" onClick={download} disabled={busy}>원본 그대로 내려받기 <span aria-hidden="true">↓</span></button><p className="muted-note">파일명에 ‘_원본사본’을 붙여 저장합니다.</p>{downloadStatus && <p className="download-status" role="status">{downloadStatus}</p>}<div className="replace-file" onDragOver={onDragOver} onDrop={onDrop} aria-label="새 HWPX 파일 가져오기"><p>다른 문서의 구조를 확인하려면</p>{picker}<p className="muted-note">이곳에 HWPX 한 개를 끌어 놓을 수 있습니다. 새 파일 검사에 실패하면 현재 문서를 유지합니다.</p></div></aside>
           </div>
-          <DocumentInspector key={document.jobId} inspection={document.inspection} />
         </>}
+        {document && <div hidden={route !== 'workspace'}>
+          <ResearchDraftPanel key={`draft-${document.jobId}`} inspection={document.inspection}
+            disabled={readiness !== 'ready' || (busy && phase !== 'drafting')} generating={phase === 'drafting'}
+            onGenerate={generateDraft} onCancel={cancel} result={draftResult} error={draftError}
+            onDownload={downloadDraft} onInvalidate={invalidateDraft} />
+        </div>}
+        {route === 'workspace' && document && <DocumentInspector key={document.jobId} inspection={document.inspection} />}
 
-        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">현재 버전은 HWPX의 문서 구조·내용·서식 참조를 읽고 원본 사본을 내려받는 시험판입니다.</p><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>선언 순서에 따른 문단·표 내용과 글꼴·크기·문단 서식 참조 탐색</li><li>병합·중첩 표와 확인할 수 없는 서식의 사유 확인</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>서식 기준에 따른 검사와 자동 교정</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서를 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
+        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">HWPX를 검사하고 줄글을 보고서·논문 구성으로 분류해 별도의 작성 초안을 만드는 시험판입니다. HWP 파일은 한글에서 HWPX로 저장한 뒤 선택해 주세요.</p><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>선언 순서에 따른 문단·표 내용과 글꼴·크기·문단 서식 참조 탐색</li><li>병합·중첩 표와 확인할 수 없는 서식의 사유 확인</li><li>원문 문단의 자동 분류·배치 검토와 보고서·논문 HWPX 초안 생성</li><li>생성한 초안의 파일 구조·원문 텍스트 보존 재검사</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>업로드 원본의 자동 교정, 표·그림·각주가 포함된 초안 생성</li><li>원문에 없는 연구 결과 작성, 전국대회 최종 제출 적합성 인증</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서를 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
       </main>
       <footer className="site-footer"><span>한글 마감실</span><p>원본은 그대로, 확인한 범위만 안내합니다.</p><span data-build-commit={__BUILD_COMMIT__} title={`빌드 ${__BUILD_COMMIT__}`}>빌드 {__BUILD_COMMIT__ === 'development' ? '개발' : __BUILD_COMMIT__.slice(0, 7)}</span><a href="#/help">지원 범위 및 개인정보</a></footer>
     </div>
