@@ -4,6 +4,8 @@ import { readFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium, expect } from '@playwright/test';
 import { makeHancomPackage } from '../tests/helpers/hancom-package.ts';
+import { unzipSync } from 'fflate';
+import { SaxesParser } from 'saxes';
 
 const target = new URL(process.env.PAGES_URL ?? '');
 const commit = process.env.EXPECTED_COMMIT ?? '';
@@ -14,9 +16,38 @@ if (target.username || target.password || target.search || target.hash
 }
 if (!target.pathname.endsWith('/')) target.pathname += '/';
 const fixture = await readFile(new URL('../tests/fixtures/01-plain-text.hwpx', import.meta.url));
+const fixtureGolden = JSON.parse(await readFile(new URL('../tests/fixtures/01-plain-text.golden.json', import.meta.url), 'utf8'));
 const replacement = await readFile(new URL('../tests/fixtures/03-spine-order.hwpx', import.meta.url));
 const tableFixture = await readFile(new URL('../tests/fixtures/04-simple-table.hwpx', import.meta.url));
 const hancom = Buffer.from(makeHancomPackage(fixture));
+
+// Only a tiny trusted synthetic download is expanded in this CI helper.
+function sourceParagraphTexts(bytes) {
+  const section = unzipSync(bytes)['Contents/section0.xml'];
+  assert.ok(section, 'The draft has no section XML.');
+  const parser = new SaxesParser({ xmlns: true });
+  const texts = [];
+  let source = null;
+  let inText = false;
+  parser.on('opentag', (tag) => {
+    if (tag.uri !== 'http://www.hancom.co.kr/hwpml/2011/paragraph') return;
+    if (tag.local === 'p') {
+      const id = Object.values(tag.attributes).find((attribute) => attribute.uri === '' && attribute.local === 'id')?.value;
+      source = Number(id) >= 1000 ? '' : null;
+    }
+    if (tag.local === 't') inText = true;
+    if (source !== null && tag.local === 'tab') source += '\t';
+    if (source !== null && tag.local === 'lineBreak') source += '\n';
+  });
+  parser.on('text', (text) => { if (source !== null && inText) source += text; });
+  parser.on('closetag', (tag) => {
+    if (tag.uri !== 'http://www.hancom.co.kr/hwpml/2011/paragraph') return;
+    if (tag.local === 't') inText = false;
+    if (tag.local === 'p' && source !== null) { texts.push(source); source = null; }
+  });
+  parser.write(new TextDecoder('utf-8', { fatal: true }).decode(section)).close();
+  return texts;
+}
 const browser = await chromium.launch({
   executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
     ?? (existsSync('/usr/bin/chromium') ? '/usr/bin/chromium' : undefined),
@@ -77,6 +108,25 @@ try {
   const path = await download.path();
   assert.ok(path, 'The public app did not produce a downloadable file.');
   assert.deepEqual(await readFile(path), fixture, 'Downloaded demo bytes changed.');
+
+  // Exercise the actual public Worker and independently reopen its offline output.
+  await expect(page.getByRole('heading', { name: '보고서·논문 초안 만들기' })).toBeVisible();
+  await page.getByLabel('연구 제목').fill('배포 검증용 합성 연구');
+  await page.getByRole('button', { name: '검토한 내용으로 초안 생성' }).click();
+  await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.' })).toBeVisible();
+  const draftDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '생성한 초안 내려받기' }).click();
+  const draftPath = await (await draftDownload).path();
+  assert.ok(draftPath, 'The public app did not produce a downloadable research draft.');
+  const draftBytes = await readFile(draftPath);
+  assert.deepEqual(sourceParagraphTexts(draftBytes), fixtureGolden.paragraphsInDeclaredOrder);
+  await expect(page.locator('.draft-verification').getByText('미실행', { exact: true })).toBeVisible();
+  await page.getByLabel('연구 제목').fill('검토 중인 새 제목');
+  await expect(page.getByRole('button', { name: '생성한 초안 내려받기' })).toHaveCount(0);
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByLabel('HWPX 파일 선택', { exact: true }).setInputFiles({ name: '초안재검사_합성.hwpx', mimeType: 'application/hwp+zip', buffer: draftBytes });
+  await expect(page.getByRole('heading', { name: '초안재검사_합성.hwpx', exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
 
   await page.getByRole('button', { name: '작업 종료' }).click();
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -139,6 +189,7 @@ try {
     download: 'byte-identical', offlineRestart: 'passed', hashRefresh: 'passed', assetErrors: 0,
     hancomStructure: 'passed offline with inert metadata',
     documentReading: 'paragraphs, character size, spine order and table cells passed offline',
+    researchDraft: 'generated offline, independently reopened, source text preserved, stale output cleared',
   }));
 } finally {
   await browser.close();

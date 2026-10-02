@@ -243,8 +243,11 @@ export function createFormatResolver(header: { path: string; index: XmlIndex }) 
       return [language, value(found.definition ? attribute(found.definition.element, 'face') : null,
         rawId, 'FONT_ID', 'font-face', fontSource, found.reasons)];
     })) as Record<FontLanguage, FormatValue<string>>;
-    const superscript = definition ? elementChildren(definition.element, NS.head, 'supscript').length > 0 : false;
-    const subscript = definition ? elementChildren(definition.element, NS.head, 'subscript').length > 0 : false;
+    const superscriptProperty = definition ? property(definition.element, NS.head, 'supscript') : null;
+    const subscriptProperty = definition ? property(definition.element, NS.head, 'subscript') : null;
+    const superscript = Boolean(superscriptProperty?.element);
+    const subscript = Boolean(subscriptProperty?.element);
+    const possibleScript = superscript || subscript || Boolean(superscriptProperty?.reasons.length || subscriptProperty?.reasons.length);
     const format: CharacterFormat = {
       reference: resolved.model,
       fontSize: numeric(definition ? attribute(definition.element, 'height') : null,
@@ -257,7 +260,8 @@ export function createFormatResolver(header: { path: string; index: XmlIndex }) 
       ...resolved.reasons, ...(definition ? structureReasons(definition) : []), ...format.fontSize.reasons,
       ...[format.fonts, format.ratio, format.spacing, format.relativeSize, format.offset]
         .flatMap((values) => Object.values(values).flatMap((item) => item.reasons)),
-      ...(superscript || subscript ? ['SUPERSCRIPT_OR_SUBSCRIPT' as const] : []),
+      ...(superscriptProperty?.reasons ?? []), ...(subscriptProperty?.reasons ?? []),
+      ...(possibleScript ? ['SUPERSCRIPT_OR_SUBSCRIPT' as const] : []),
     ]);
     characterValues.set(cacheKey, format);
     return format;

@@ -15,6 +15,14 @@ import { inspectTables } from './tables';
 export interface InspectionXmlPart { path: string; index: XmlIndex }
 export interface InspectionParts { header: InspectionXmlPart; sections: InspectionXmlPart[] }
 const KNOWN_NAMESPACES = new Set<string>(Object.values(NS));
+const XML_WHITESPACE = /^[ \t\r\n]*$/u;
+
+function isLineLayoutCache(element: XmlIndexedElement): boolean {
+  return element.uri === NS.paragraph && ['linesegarray', 'lineSegArray'].includes(element.local)
+    && element.children.every((child) => child.kind !== 'element' ? XML_WHITESPACE.test(child.text)
+      : child.uri === NS.paragraph && ['lineseg', 'lineSeg'].includes(child.local)
+        && child.children.every((item) => item.kind !== 'element' && XML_WHITESPACE.test(item.text)));
+}
 
 function paragraphContext(element: XmlIndexedElement, hasCell: boolean): ParagraphContext {
   for (let current = element.parent; current; current = current.parent) {
@@ -43,12 +51,33 @@ function fieldParagraphs(index: XmlIndex): Set<XmlIndexedElement> {
   return affected;
 }
 
+// A new text-only draft may replace these layout settings. Do not flatten
+// controls containing text, notes, unknown namespaces, or object children.
+function isLayoutOnlyControl(element: XmlIndexedElement): boolean {
+  if (element.uri !== NS.paragraph) return false;
+  const allowed = element.local === 'secPr'
+    ? new Set(['secPr', 'grid', 'startNum', 'visibility', 'lineNumberShape', 'pagePr', 'margin',
+      'footNotePr', 'endNotePr', 'autoNumFormat', 'noteLine', 'noteSpacing', 'numbering', 'placement', 'pageBorderFill', 'offset'])
+    : element.local === 'ctrl' ? new Set(['ctrl', 'colPr', 'colSz', 'colLine']) : null;
+  if (!allowed) return false;
+  const pending = [element];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || current.uri !== NS.paragraph || !allowed.has(current.local)) return false;
+    for (const child of current.children) {
+      if (child.kind === 'element') pending.push(child);
+      else if (!XML_WHITESPACE.test(child.text)) return false;
+    }
+  }
+  return element.local !== 'ctrl' || elementChildren(element).every((child) => child.local === 'colPr');
+}
+
 function inspectRunText(element: XmlIndexedElement, nodes: NodeCatalog): { segments: InspectionTextSegment[]; reasons: InspectionReason[] } {
   const segments: InspectionTextSegment[] = [];
   const reasons: InspectionReason[] = [];
   for (const child of element.children) {
     if (child.kind !== 'element') {
-      if (child.text.trim()) {
+      if (!XML_WHITESPACE.test(child.text)) {
         segments.push({ kind: child.kind === 'cdata' ? 'CDATA' : 'TEXT', text: child.text, elementName: null, sourceSpan: nodes.sourceSpan(child) });
         reasons.push('UNSUPPORTED_CONTROL');
       }
@@ -56,7 +85,7 @@ function inspectRunText(element: XmlIndexedElement, nodes: NodeCatalog): { segme
     }
     if (!isElement(child, NS.paragraph, 't')) {
       reasons.push(child.uri === NS.paragraph ? 'NON_TEXT_OBJECT' : 'UNKNOWN_NAMESPACE');
-      segments.push({ kind: 'UNKNOWN_CONTROL', text: '', elementName: `${nodes.namespaceLabel(child.uri)}:${child.local.length <= 32 ? child.local : 'element'}`, sourceSpan: nodes.sourceSpan(child) });
+      segments.push({ kind: 'UNKNOWN_CONTROL', text: '', elementName: `${nodes.namespaceLabel(child.uri)}:${child.local.length <= 32 ? child.local : 'element'}`, sourceSpan: nodes.sourceSpan(child), ...(isLayoutOnlyControl(child) ? { layoutControl: true as const } : {}) });
       continue;
     }
     for (const textChild of child.children) {
@@ -113,6 +142,10 @@ export function inspectDocument(parts: InspectionParts, limits: Readonly<Resourc
     const nodes = createNodeCatalog(part.path, part.index);
     const rootIdentity = nodes.identity(part.index.root);
     const section = { ...rootIdentity, entryPath: part.path, order, paragraphIds: [] as string[], tableIds: [] as string[] };
+    for (const child of part.index.root.children) {
+      if (child.kind === 'element' && !isElement(child, NS.paragraph, 'p')) section.reasons.push('UNKNOWN_ELEMENT');
+      else if (child.kind !== 'element' && !XML_WHITESPACE.test(child.text)) section.reasons.push('UNSUPPORTED_CONTROL');
+    }
     const tableCatalog = inspectTables(part.index, nodes, section.nodeId);
     result.sections.push(section);
     result.tables.push(...tableCatalog.tables);
@@ -140,9 +173,10 @@ export function inspectDocument(parts: InspectionParts, limits: Readonly<Resourc
       if (context === 'UNKNOWN') paragraph.reasons.push('UNSUPPORTED_CONTEXT');
       if (affectedByField.has(element)) paragraph.reasons.push('FIELD_CONTROL');
       if (cell) paragraph.reasons.push(...cell.reasons);
+      if (element.children.some((child) => child.kind !== 'element' && !XML_WHITESPACE.test(child.text))) paragraph.reasons.push('UNSUPPORTED_CONTROL');
       for (const candidate of elementChildren(element)) {
         if (isElement(candidate, NS.paragraph, 'run')) continue;
-        if (candidate.uri === NS.paragraph && ['linesegarray', 'lineSegArray'].includes(candidate.local)) continue;
+        if (isLineLayoutCache(candidate)) continue;
         paragraph.reasons.push(candidate.uri === NS.paragraph ? 'UNKNOWN_ELEMENT' : 'UNKNOWN_NAMESPACE');
       }
       for (const runElement of elementChildren(element, NS.paragraph, 'run')) {
