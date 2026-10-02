@@ -1,0 +1,10 @@
+.plain-text-input { margin: 24px 0; padding: 24px; }
+.plain-text-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.plain-text-heading h2 { font-size: 22px; margin: 0; }
+.plain-text-input > p { line-height: 1.8; margin: 12px 0 20px; color: var(--muted); }
+.plain-text-input label { display: block; margin-bottom: 8px; font-weight: 600; }
+.plain-text-input textarea { display: block; width: 100%; min-height: 200px; resize: vertical; border: 1px solid var(--line); border-radius: 8px; padding: 14px; font: inherit; line-height: 1.8; background: white; }
+.plain-text-input textarea:focus-visible { outline: 3px solid var(--green); outline-offset: 3px; }
+.plain-text-count { font-size: 13px; color: var(--muted); margin: 12px 0; }
+.plain-text-error { color: #a64214; }
+@media (max-width: 680px) { .plain-text-input { padding: 20px 16px; } }

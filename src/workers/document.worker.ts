@@ -2,6 +2,7 @@ import { safeError, type ErrorCode } from '../domain/errors';
 import { RESOURCE_LIMITS } from '../domain/limits';
 import { createInspectionSession } from '../engine/session';
 import { createResearchDraft } from '../engine/draft';
+import { createPlainTextSource } from '../engine/plain-text';
 import {
   isJobId,
   isWorkerRequest,
@@ -50,7 +51,7 @@ scope.addEventListener('message', (event) => {
     return;
   }
 
-  if (request.bytes.byteLength > RESOURCE_LIMITS.maxInputBytes) {
+  if (request.type !== 'TEXT' && request.bytes.byteLength > RESOURCE_LIMITS.maxInputBytes) {
     replyError('RESOURCE_LIMIT', request.jobId);
     return;
   }
@@ -59,6 +60,23 @@ scope.addEventListener('message', (event) => {
   // the Worker returns a plain reading model within this tab. Original bytes,
   // file names and hashes stay private; no source XML or cyclic index is sent.
   inspecting = true;
+  if (request.type === 'TEXT') {
+    let source: Uint8Array<ArrayBuffer> | null = null;
+    void createPlainTextSource(request.text)
+      .then(async (bytes) => {
+        source = bytes;
+        const session = await createInspectionSession(bytes, '붙여넣은 글.hwpx');
+        const buffer = bytes.buffer;
+        scope.postMessage({ type: 'TEXT_READY', protocolVersion: PROTOCOL_VERSION, jobId: request.jobId,
+          bytes: buffer, report: session.report, inspection: session.inspection }, [buffer]);
+      })
+      .catch((error: unknown) => {
+        const { code, xmlReason } = safeError(error);
+        replyError(code, request.jobId, xmlReason);
+      })
+      .finally(() => { if (source?.byteLength) source.fill(0); inspecting = false; });
+    return;
+  }
   if (request.type === 'DRAFT') {
     const input = new Uint8Array(request.bytes);
     void createResearchDraft(input, request.options)

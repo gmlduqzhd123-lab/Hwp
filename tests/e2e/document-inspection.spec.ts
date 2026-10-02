@@ -8,6 +8,12 @@ const simple = await readFile(new URL('../fixtures/04-simple-table.hwpx', import
 const complex = await readFile(new URL('../fixtures/05-unsupported-tables.hwpx', import.meta.url));
 const golden = JSON.parse(await readFile(new URL('../fixtures/01-plain-text.golden.json', import.meta.url), 'utf8')) as { paragraphsInDeclaredOrder: string[] };
 
+async function openSection(page: Page, label: string): Promise<void> {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function ready(page: Page) {
   await page.goto('./#/start');
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -20,6 +26,7 @@ async function select(page: Page, buffer: Buffer, name = '구조검증_합성.hw
     await page.getByLabel('HWPX 파일 선택', { exact: true }).setInputFiles({ name, mimeType: 'application/hwp+zip', buffer });
   } finally { page.off('dialog', accept); }
   await expect(page.getByRole('heading', { name })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.getByRole('heading', { name: '문서 구조 보기', exact: true })).toBeVisible();
 }
 

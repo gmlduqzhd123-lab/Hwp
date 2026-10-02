@@ -77,6 +77,12 @@ async function instrument(page: Page, suppressInit = false) {
   }, suppressInit);
 }
 
+async function openSection(page: Page, label: string): Promise<void> {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function ready(page: Page) {
   await page.goto('./#/start');
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -175,7 +181,7 @@ test('a silent Worker readiness hang times out, keeps input disabled and recover
   await page.getByRole('button', { name: '준비 다시 시도' }).click();
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: '예시 문서로 체험' }).click();
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
 });
 
 test('ending work revokes download URLs and navigation cannot recover the ended document', async ({ page }) => {
@@ -226,7 +232,9 @@ test('file drops outside the picker prevent navigation and workspace replacement
   const dropped = page.evaluate((bytes: number[]) => {
     const transfer = new DataTransfer();
     transfer.items.add(new File([new Uint8Array(bytes)], '드롭새문서.hwpx', { type: 'application/hwp+zip' }));
-    window.document.querySelector('.replace-file')?.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
+    const picker = window.document.querySelector('[aria-label="새 HWPX 파일 가져오기"]');
+    if (!picker) throw new Error('No workspace replacement drop target.');
+    picker.dispatchEvent(new DragEvent('drop', { dataTransfer: transfer, bubbles: true, cancelable: true }));
   }, Array.from(nextFixture));
   await (await accepted).accept();
   await dropped;
@@ -312,7 +320,7 @@ test('prepared production resources can restart after ending and cancelling work
   page.on('request', (request) => { if (/^https?:/.test(request.url())) requests.push(request.url()); });
   await context.setOffline(true);
   await page.getByRole('button', { name: '예시 문서로 체험' }).click();
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await page.getByRole('button', { name: '작업 종료' }).click();
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
   await select(page, '오프라인원본.hwpx');

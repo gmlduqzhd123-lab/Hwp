@@ -113,3 +113,26 @@
   .inspector-pages .button { padding: 7px 11px; }
   .inspector-pages small { display: block; }
 }
+
+.paste-entry-button { width: 100%; margin-top: 12px; }
+.simple-workspace-heading { margin-bottom: 22px; }
+.workspace-source-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 14px 24px; padding: 18px 22px; border: 1px solid var(--line); border-radius: 14px; background: #fff; margin-bottom: 20px; }
+.source-description { flex: 1 1 240px; min-width: 0; }
+.source-description h2 { font-size: 17px; margin: 0 0 6px; overflow-wrap: anywhere; }
+.source-description p { margin: 0; font-size: 12px; color: var(--muted); }
+.source-description .badge { margin-left: 10px; }
+.source-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.source-actions .button { min-height: 40px; padding: 10px 14px; font-size: 12px; }
+.workspace-source-bar .download-status { flex-basis: 100%; margin: 0; }
+.workspace-inspection-details { margin-top: 24px; border: 1px solid var(--line); border-radius: 14px; background: #fff; }
+.workspace-inspection-details > summary { padding: 20px 24px; cursor: pointer; font-size: 15px; font-weight: 700; }
+.workspace-inspection-details > .panel { margin: 0 20px 20px; }
+.workspace-inspection-details .document-inspector { margin: 0 20px 20px; }
+@media (max-width: 680px) {
+  .workspace-source-bar { padding: 16px; }
+  .source-actions { width: 100%; }
+  .source-actions > div { flex: 1; }
+  .source-actions .file-button { width: 100%; }
+  .workspace-inspection-details > summary { padding: 18px; }
+  .workspace-inspection-details > .panel, .workspace-inspection-details .document-inspector { margin: 0 10px 12px; }
+}

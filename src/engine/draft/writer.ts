@@ -1,12 +1,13 @@
 import { Uint8ArrayReader, Uint8ArrayWriter, ZipReader, ZipWriter } from '@zip.js/zip.js/lib/zip-core-native.js';
 import { EngineError, ERROR_MESSAGES } from '../../domain/errors';
 import { RESOURCE_LIMITS } from '../../domain/limits';
-import { isResearchDraftOptions, DRAFT_SOURCE_ID_BASE as SOURCE_DRAFT_PARAGRAPH_ID_BASE, DRAFT_SUPPLEMENT_ID_BASE, type DraftPage, type ResearchDraftOptions } from '../../domain/research';
+import { isResearchDraftOptions, DRAFT_LIMITS, DRAFT_SOURCE_ID_BASE as SOURCE_DRAFT_PARAGRAPH_ID_BASE, DRAFT_SUPPLEMENT_ID_BASE, type DraftPage, type ResearchDraftOptions } from '../../domain/research';
 import { getEffectiveDraftProfile, SCHOOL_LEVEL_LABELS } from '../../domain/competitions';
 import type { DraftProfile } from '../../domain/competition-types';
 import { elementChildren, indexXml, type XmlIndexedElement } from '../xml/index';
 import { createDraftHeader, type DraftStyleName } from './styles';
 import { getBlankTemplateBytes } from './template';
+import { PAPER_PAGE } from './plan';
 
 const HP = 'http://www.hancom.co.kr/hwpml/2011/paragraph';
 const OPF = 'http://www.idpf.org/2007/opf/';
@@ -176,15 +177,8 @@ function containerBytes(template: Uint8Array): Uint8Array<ArrayBuffer> {
   return encoder.encode(prefix + `<${rootfiles.qname}><${rootfile.qname} full-path="Contents/content.hpf" media-type="application/hwpml-package+xml"/><${rootfile.qname} full-path="Preview/PrvText.txt" media-type="text/xml"/></${rootfiles.qname}>` + suffix);
 }
 
-/** Build a separate draft locally. Uploaded XML and original package bytes are never modified. */
-export async function makeResearchDraft(input: ResearchDraftOptions, inputPage: DraftPage): Promise<Uint8Array<ArrayBuffer>> {
-  if (!isResearchDraftOptions(input)) invalid();
-  validatePage(inputPage);
-  // Own every caller value before the first async ZIP operation.
-  const options = structuredClone(input);
-  const page = structuredClone(inputPage);
-  const profile = getEffectiveDraftProfile(options);
-  const emissions = draftParagraphs(options, profile);
+/** Shared bounded ZIP assembly uses only the pinned public blank. */
+async function buildPackage(emissions: readonly Emission[], page: DraftPage, title: string): Promise<Uint8Array<ArrayBuffer>> {
   const reader = new ZipReader(new Uint8ArrayReader(getBlankTemplateBytes()), { useWebWorkers: false, useCompressionStream: false, checkSignature: true });
   try {
     const entries = await reader.getEntries();
@@ -202,7 +196,7 @@ export async function makeResearchDraft(input: ResearchDraftOptions, inputPage: 
     const formats = createDraftHeader(header, page);
     parts.set('Contents/header.xml', formats.bytes);
     parts.set('Contents/section0.xml', sectionBytes(section, page, formats.styles, emissions));
-    parts.set('Contents/content.hpf', metadataBytes(metadata, options.title));
+    parts.set('Contents/content.hpf', metadataBytes(metadata, title));
     parts.set('META-INF/container.xml', containerBytes(container));
     parts.set('settings.xml', settingsBytes(settings, emissions[0]?.id ?? 0));
     parts.delete('Preview/PrvImage.png');
@@ -257,4 +251,29 @@ export async function makeResearchDraft(input: ResearchDraftOptions, inputPage: 
     if (error instanceof EngineError) throw error;
     return invalid();
   } finally { await reader.close(); }
+}
+
+/** Build a separate draft locally. Uploaded XML and original package bytes are never modified. */
+export async function makeResearchDraft(input: ResearchDraftOptions, inputPage: DraftPage): Promise<Uint8Array<ArrayBuffer>> {
+  if (!isResearchDraftOptions(input)) invalid();
+  validatePage(inputPage);
+  // Own every caller value before the first async ZIP operation.
+  const options = structuredClone(input);
+  const page = structuredClone(inputPage);
+  const profile = getEffectiveDraftProfile(options);
+  return buildPackage(draftParagraphs(options, profile), page, options.title);
+}
+
+/** New source from explicitly entered text, never an extraction from an uploaded file. */
+export async function makePlainTextSource(text: string): Promise<Uint8Array<ArrayBuffer>> {
+  if (typeof text !== 'string' || !text.trim()) invalid();
+  if (text.length > DRAFT_LIMITS.maxTextCharacters) limit();
+  const lines = text.split('\n');
+  // The public blank contributes one empty section-properties carrier paragraph.
+  if (lines.length >= DRAFT_LIMITS.maxParagraphs) limit();
+  xmlText(text);
+  const page = structuredClone(PAPER_PAGE);
+  validatePage(page);
+  return buildPackage(lines.map((line, ordinal) => ({ id: SOURCE_DRAFT_PARAGRAPH_ID_BASE + ordinal,
+    text: line, style: 'body', pageBreak: false })), page, '직접 입력한 원고');
 }
