@@ -1,0 +1,104 @@
+{
+  "fixtureId": "05-unsupported-tables",
+  "description": "병합 표 및 중첩 표를 검사 전용으로 제한해야 하는 합성 사례",
+  "synthetic": true,
+  "hancomValidation": {
+    "status": "NOT_RUN",
+    "build": null,
+    "rendering": "NOT_VALIDATED"
+  },
+  "expectedSupportLevel": "INSPECT_ONLY",
+  "supportReason": "UNVALIDATED_SYNTHETIC_PACKAGE",
+  "packageVersion": {
+    "major": 5,
+    "minor": 1,
+    "micro": 0,
+    "buildNumber": 0,
+    "xmlVersion": "1.5"
+  },
+  "mimetype": {
+    "value": "application/hwp+zip",
+    "entryIndex": 0,
+    "compressionMethod": 0
+  },
+  "packageEntry": "Contents/content.hpf",
+  "entryNames": [
+    "mimetype",
+    "version.xml",
+    "META-INF/container.xml",
+    "Contents/content.hpf",
+    "Contents/header.xml",
+    "Contents/section0.xml"
+  ],
+  "declaredSectionOrder": [
+    "Contents/section0.xml"
+  ],
+  "paragraphsInDeclaredOrder": [
+    "합성 미지원 표",
+    "합쳐진 두 칸",
+    "아래 왼쪽",
+    "아래 오른쪽",
+    "바깥 칸",
+    "중첩된 칸"
+  ],
+  "sections": [
+    {
+      "entryPath": "Contents/section0.xml",
+      "texts": [
+        "합성 미지원 표",
+        "합쳐진 두 칸",
+        "아래 왼쪽",
+        "아래 오른쪽",
+        "바깥 칸",
+        "중첩된 칸"
+      ]
+    }
+  ],
+  "tables": [
+    {
+      "id": "20",
+      "rows": 2,
+      "columns": 2,
+      "reason": "MERGED_TABLE",
+      "supportLevel": "INSPECT_ONLY"
+    },
+    {
+      "id": "30",
+      "rows": 1,
+      "columns": 1,
+      "reason": "NESTED_TABLE",
+      "supportLevel": "INSPECT_ONLY"
+    },
+    {
+      "id": "33",
+      "rows": 1,
+      "columns": 1,
+      "reason": "NESTED_TABLE",
+      "supportLevel": "INSPECT_ONLY"
+    }
+  ],
+  "formatCandidates": {
+    "characterShapes": [
+      {
+        "id": "0",
+        "height": 1100
+      },
+      {
+        "id": "1",
+        "height": 1200
+      }
+    ],
+    "fontReference": "existing-language-font-id-0",
+    "cachePolicy": "UNVALIDATED_NO_EDIT"
+  },
+  "packageByteLength": 7659,
+  "packageSha256": "e03a8db3232dc8c320aa4ef8ddecf682469bc865d555ae0a64f8211d46e540f6",
+  "entrySha256": {
+    "mimetype": "5ab5230b5af04f78947736bf8dd1a269aa684e234f7f4a392efb85289d1655c2",
+    "version.xml": "3937e85e23e521109385ffce398624a818a80adfafdbaa94a6b4fd85816b1aaf",
+    "META-INF/container.xml": "5835c3bd02293fc3ee5d036501202bea21f4ce8d64966136d0fcf8044acc025c",
+    "Contents/content.hpf": "12c621f530f60cf872651140ec6967a8f65b50b47a1564b07ef660608a43950d",
+    "Contents/header.xml": "0431d4a171e003297a2b31080fe35f7d10c5bb8c2bdb6eb755fbb47c2ca69ba7",
+    "Contents/section0.xml": "3c39af2aa95bb109188429649363e491704fa0ec5305404e78ab7272c7d01c4b"
+  }
+}

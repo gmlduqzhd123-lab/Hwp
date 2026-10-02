@@ -1,0 +1,92 @@
+{
+  "fixtureId": "03-spine-order",
+  "description": "물리적 파일명 순서 0,1,2와 선언된 문서 순서 2,0,1이 다름",
+  "synthetic": true,
+  "hancomValidation": {
+    "status": "NOT_RUN",
+    "build": null,
+    "rendering": "NOT_VALIDATED"
+  },
+  "expectedSupportLevel": "INSPECT_ONLY",
+  "supportReason": "UNVALIDATED_SYNTHETIC_PACKAGE",
+  "packageVersion": {
+    "major": 5,
+    "minor": 1,
+    "micro": 0,
+    "buildNumber": 0,
+    "xmlVersion": "1.5"
+  },
+  "mimetype": {
+    "value": "application/hwp+zip",
+    "entryIndex": 0,
+    "compressionMethod": 0
+  },
+  "packageEntry": "Contents/content.hpf",
+  "entryNames": [
+    "mimetype",
+    "version.xml",
+    "META-INF/container.xml",
+    "Contents/content.hpf",
+    "Contents/header.xml",
+    "Contents/section0.xml",
+    "Contents/section1.xml",
+    "Contents/section2.xml"
+  ],
+  "declaredSectionOrder": [
+    "Contents/section2.xml",
+    "Contents/section0.xml",
+    "Contents/section1.xml"
+  ],
+  "paragraphsInDeclaredOrder": [
+    "선언 순서 첫 번째",
+    "선언 순서 두 번째",
+    "선언 순서 세 번째"
+  ],
+  "sections": [
+    {
+      "entryPath": "Contents/section0.xml",
+      "texts": [
+        "선언 순서 두 번째"
+      ]
+    },
+    {
+      "entryPath": "Contents/section1.xml",
+      "texts": [
+        "선언 순서 세 번째"
+      ]
+    },
+    {
+      "entryPath": "Contents/section2.xml",
+      "texts": [
+        "선언 순서 첫 번째"
+      ]
+    }
+  ],
+  "tables": [],
+  "formatCandidates": {
+    "characterShapes": [
+      {
+        "id": "0",
+        "height": 1100
+      },
+      {
+        "id": "1",
+        "height": 1200
+      }
+    ],
+    "fontReference": "existing-language-font-id-0",
+    "cachePolicy": "UNVALIDATED_NO_EDIT"
+  },
+  "packageByteLength": 4886,
+  "packageSha256": "06c8130ea20e5bbec49698d1b792f1ff596711cffc5e06c62e9739c57a124f17",
+  "entrySha256": {
+    "mimetype": "5ab5230b5af04f78947736bf8dd1a269aa684e234f7f4a392efb85289d1655c2",
+    "version.xml": "3937e85e23e521109385ffce398624a818a80adfafdbaa94a6b4fd85816b1aaf",
+    "META-INF/container.xml": "5835c3bd02293fc3ee5d036501202bea21f4ce8d64966136d0fcf8044acc025c",
+    "Contents/content.hpf": "9d2b1bf4af5e6a3b897e2657454993c8bf0dcb696a1f998973941e13da70fa81",
+    "Contents/header.xml": "5f5c73f31c40c531072eb61a026f0297d76ed6af675ad6d35135b8f07fa929a1",
+    "Contents/section0.xml": "4cf19ba4e76e6f3da13d10922d0784103aa1cef828df9e4757033d2550403cfd",
+    "Contents/section1.xml": "b2962d0a564dc39af7a4384cc95f5c3a3d641b47deedc27f11d52bbd431de701",
+    "Contents/section2.xml": "f53ef66587e7cce5d5821d719c08ea0971672c5f3f9339c5c90574b821762444"
+  }
+}
