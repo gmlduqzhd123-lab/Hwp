@@ -1,0 +1,74 @@
+{
+  "fixtureId": "02-alternate-prefixes",
+  "description": "URI는 같고 section/paragraph/head/core/OPF prefix가 다른 문서",
+  "synthetic": true,
+  "hancomValidation": {
+    "status": "NOT_RUN",
+    "build": null,
+    "rendering": "NOT_VALIDATED"
+  },
+  "expectedSupportLevel": "INSPECT_ONLY",
+  "supportReason": "UNVALIDATED_SYNTHETIC_PACKAGE",
+  "packageVersion": {
+    "major": 5,
+    "minor": 1,
+    "micro": 0,
+    "buildNumber": 0,
+    "xmlVersion": "1.5"
+  },
+  "mimetype": {
+    "value": "application/hwp+zip",
+    "entryIndex": 0,
+    "compressionMethod": 0
+  },
+  "packageEntry": "Contents/content.hpf",
+  "entryNames": [
+    "mimetype",
+    "version.xml",
+    "META-INF/container.xml",
+    "Contents/content.hpf",
+    "Contents/header.xml",
+    "Contents/section0.xml"
+  ],
+  "declaredSectionOrder": [
+    "Contents/section0.xml"
+  ],
+  "paragraphsInDeclaredOrder": [
+    "다른 접두사에서도 한글 그대로",
+    "기호 & 공백  보존"
+  ],
+  "sections": [
+    {
+      "entryPath": "Contents/section0.xml",
+      "texts": [
+        "다른 접두사에서도 한글 그대로",
+        "기호 & 공백  보존"
+      ]
+    }
+  ],
+  "tables": [],
+  "formatCandidates": {
+    "characterShapes": [
+      {
+        "id": "0",
+        "height": 1100
+      },
+      {
+        "id": "1",
+        "height": 1200
+      }
+    ],
+    "fontReference": "existing-language-font-id-0",
+    "cachePolicy": "UNVALIDATED_NO_EDIT"
+  },
+  "packageByteLength": 3748,
+  "packageSha256": "c2ff1cf57824d5cda0893c24ac32c84d5cc8749b2f4ab8be2c23a372b74ba071",
+  "entrySha256": {
+    "mimetype": "5ab5230b5af04f78947736bf8dd1a269aa684e234f7f4a392efb85289d1655c2",
+    "version.xml": "3937e85e23e521109385ffce398624a818a80adfafdbaa94a6b4fd85816b1aaf",
+    "META-INF/container.xml": "5835c3bd02293fc3ee5d036501202bea21f4ce8d64966136d0fcf8044acc025c",
+    "Contents/content.hpf": "fe8a1373afa03b8dbc796d2a30bcb33a1f4e8a5c67bf5e96fe75d3943b0ae1e0",
+    "Contents/header.xml": "1adb14b8354ce044419cb5f52c38ded32d1845a9b80fc4bc91746f9010e4111a",
+    "Contents/section0.xml": "20f4b757617c2595e57c98805bba06fffee5a7be7bb4d016b78819489de53b1f"
+  }
+}

@@ -1,0 +1,176 @@
+name: Validate and Deploy Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CI: "true"
+  PAGES_BASE_PATH: /Hwp/
+  VITE_APP_COMMIT: ${{ github.sha }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  validate:
+    name: Validate static app
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the triggering commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up the pinned Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Pin npm and install the lockfile
+        run: |
+          npm install --global npm@11.9.0
+          test "$(npm --version)" = "11.9.0"
+          npm ci
+
+      - name: Install the pinned Playwright Chromium
+        run: |
+          npx playwright install --with-deps chromium
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { chromium } from '@playwright/test';
+          appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);
+          NODE
+
+      - name: Check product constraints, types, and lint
+        run: |
+          npm run check:constraints
+          npm run typecheck
+          npm run lint
+
+      - name: Test unit, integration, and security behavior
+        run: |
+          npm run test:unit
+          npm run test:integration
+          npm run test:security
+
+      - name: Build and inspect the actual Pages artifact
+        run: |
+          npm run build
+          npm run check:dist
+
+      - name: Test the production app and nested Pages path
+        run: |
+          npm run test:e2e
+          npm run test:pages-path
+
+      - name: Upload the validated main build
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          name: github-pages
+          path: dist
+          retention-days: 1
+          include-hidden-files: false
+
+  deploy:
+    name: Deploy validated main
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: validate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages-production
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Read the existing Pages configuration
+        id: pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+        with:
+          enablement: false
+
+      - name: Check the configured project path
+        env:
+          CONFIGURED_BASE_PATH: ${{ steps.pages.outputs.base_path }}
+        run: |
+          if [[ "${CONFIGURED_BASE_PATH%/}" != "${PAGES_BASE_PATH%/}" ]]; then
+            echo "::error::The Pages path differs from the validated build path."
+            exit 1
+          fi
+
+      - name: Refuse an artifact older than current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          current_commit="$(gh api "repos/${REPOSITORY}/git/ref/heads/main" --jq '.object.sha')"
+          if [[ "$current_commit" != "$EXPECTED_COMMIT" ]]; then
+            echo "::error::main advanced after validation; refusing this older artifact."
+            exit 1
+          fi
+
+      - name: Deploy this run's validated artifact
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+        with:
+          artifact_name: github-pages
+
+  smoke:
+    name: Verify the deployed Pages app
+    needs: deploy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout the deployed commit's smoke checks
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Set up the pinned Node runtime
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Prepare the smoke-test browser
+        run: |
+          npm install --global npm@11.9.0
+          test "$(npm --version)" = "11.9.0"
+          npm ci
+          npx playwright install --with-deps chromium
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { chromium } from '@playwright/test';
+          appendFileSync(process.env.GITHUB_ENV, `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=${chromium.executablePath()}\n`);
+          NODE
+
+      - name: Verify the actual deployment URL and commit
+        env:
+          PAGES_URL: ${{ needs.deploy.outputs.page_url }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: npm run test:deployed
