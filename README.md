@@ -1,8 +1,8 @@
-# 한글 마감실 · 입력·원본 보존 검증판
+# 한글 마감실 · 문서 구조 검사판
 
 버전: PRD v2.0 / 2026-09-29
 
-React·TypeScript·Vite로 구현한 T-00~T-02 초기 검증판입니다. HWPX의 파일 형식·ZIP·XML·자원 제한을 확인하고 검사한 입력을 **원본 바이트 그대로** 내려받습니다. 서식 교정·조판·한글 화면 검증 기능은 아직 제공하지 않습니다.
+React·TypeScript·Vite로 구현한 T-00~T-03 검사판입니다. HWPX의 파일 형식·ZIP·XML·자원 제한을 확인하고 선언 순서에 따라 문단·표의 내용과 서식 참조를 읽습니다. 검사한 입력은 **원본 바이트 그대로** 내려받습니다. 서식 교정·조판·한글 화면 검증 기능은 아직 제공하지 않습니다.
 
 - `AGENTS.md`: 저장소 루트에 둘 Codex 개발 규칙
 - `docs/PRD.md`: 전체 제품·개발 명세
@@ -11,8 +11,9 @@ React·TypeScript·Vite로 구현한 T-00~T-02 초기 검증판입니다. HWPX�
 - `docs/CODEX_START.md`: 첫 작업 요청문
 - `docs/DEPENDENCIES.md`: 후보 시험과 라이브러리 선정 근거
 - `docs/SUPPORTED_FEATURES.md`: 현재 지원·미지원 범위
-- `docs/IMPLEMENTATION_STATUS.md`: 검증 결과와 T-03 진입 조건
+- `docs/IMPLEMENTATION_STATUS.md`: 검증 결과와 남은 단계
 - `docs/QA_FIXES.md`: 실제 앱 점검에서 재현한 오류와 회귀 수정
+- `docs/DOCUMENT_INSPECTION.md`: 문단·표·서식 읽기와 원본 위치 연결의 범위
 - `docs/HWPX_COMPATIBILITY.md`: 한컴 패키지 입력 호환성과 XML 오류 안내 수정
 - `docs/DEPLOYMENT.md`: GitHub Pages 검증·배포·롤백 안내
 
@@ -63,6 +64,6 @@ Codex로 개발하고 GitHub Pages에만 배포합니다. Vercel·Supabase·별�
 
 ## GitHub Pages
 
-공개 주소: [한글 마감실](https://gmlduqzhd123-lab.github.io/Hwp/). 현재 입력·보존 검증판을 배포하며 자동 교정 정식 출시나 실제 한컴 한글 검수 완료를 의미하지 않습니다.
+공개 주소: [한글 마감실](https://gmlduqzhd123-lab.github.io/Hwp/). 현재 문서 구조 검사판을 배포하며 자동 교정 정식 출시나 실제 한컴 한글 검수 완료를 의미하지 않습니다.
 
 `.github/workflows/pages.yml`은 PR에서 검증만 하고, 검증에 성공한 현재 `main`의 `dist/`를 GitHub Pages에 배포합니다. 배포 후 실제 사이트에서 빌드 commit, Worker, 예시 검사, 원본 다운로드와 오프라인 재시작을 확인합니다. 화면 아래 ‘빌드’에 commit 7자리를 표시합니다. Pages Source는 GitHub Actions를 사용하며 실행·권한·확인·롤백 절차는 `docs/DEPLOYMENT.md`에 있습니다.

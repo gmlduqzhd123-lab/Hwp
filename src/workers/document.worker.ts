@@ -1,6 +1,6 @@
 import { safeError, type ErrorCode } from '../domain/errors';
 import { RESOURCE_LIMITS } from '../domain/limits';
-import { createDocumentSession } from '../engine/session';
+import { createInspectionSession } from '../engine/session';
 import {
   isJobId,
   isWorkerRequest,
@@ -55,15 +55,17 @@ scope.addEventListener('message', (event) => {
   }
 
   // The UI transfers a copy. Every inspection owns a local, temporary session;
-  // the Worker never sends source bytes, document text, file names, or hashes.
+  // the Worker returns a plain reading model within this tab. Original bytes,
+  // file names and hashes stay private; no source XML or cyclic index is sent.
   inspecting = true;
-  void createDocumentSession(new Uint8Array(request.bytes), request.fileName)
+  void createInspectionSession(new Uint8Array(request.bytes), request.fileName)
     .then((session) => {
       scope.postMessage({
         type: 'REPORT',
         protocolVersion: PROTOCOL_VERSION,
         jobId: request.jobId,
         report: session.report,
+        inspection: session.inspection,
       });
     })
     .catch((error: unknown) => {

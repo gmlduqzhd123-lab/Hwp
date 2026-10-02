@@ -1,7 +1,8 @@
 import { getErrorMessage, isErrorCode, isXmlUnsupportedReason, type ErrorCode, type XmlUnsupportedReason } from '../domain/errors';
 import type { PreflightReport } from '../domain/preflight';
+import type { DocumentInspection } from '../domain/document';
 
-export const PROTOCOL_VERSION = 1 as const;
+export const PROTOCOL_VERSION = 2 as const;
 
 export interface InitRequest {
   type: 'INIT';
@@ -28,6 +29,7 @@ export interface ReportResponse {
   protocolVersion: typeof PROTOCOL_VERSION;
   jobId: string;
   report: PreflightReport;
+  inspection: DocumentInspection;
 }
 
 export interface ErrorResponse {

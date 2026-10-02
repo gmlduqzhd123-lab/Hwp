@@ -3,6 +3,8 @@ import type { ChangeEvent, DragEvent as ReactDragEvent } from 'react';
 import { ERROR_MESSAGES, getErrorMessage, isErrorCode, type ErrorCode } from './domain/errors';
 import { RESOURCE_LIMITS } from './domain/limits';
 import type { PreflightReport } from './domain/preflight';
+import type { DocumentInspection } from './domain/document';
+import DocumentInspector from './features/DocumentInspector';
 import { PROTOCOL_VERSION } from './workers/protocol';
 import type { WorkerRequest, WorkerResponse } from './workers/protocol';
 import InlineDocumentWorker from './workers/document.worker.ts?worker&inline';
@@ -14,10 +16,12 @@ type Phase = 'idle' | 'reading' | 'checking';
 const PREPARATION_TIMEOUT_MS = 20_000;
 
 interface LocalDocument {
+  jobId: string;
   bytes: Uint8Array<ArrayBuffer>;
   name: string;
   example: boolean;
   report: PreflightReport;
+  inspection: DocumentInspection;
 }
 
 interface PendingDocument {
@@ -201,7 +205,7 @@ function App() {
         const pending = pendingRef.current;
         if (!pending || response.jobId !== pending.jobId) return;
         if (response.type === 'REPORT') {
-          const accepted = { ...pending, report: response.report };
+          const accepted = { ...pending, report: response.report, inspection: response.inspection };
           acceptedRef.current?.bytes.fill(0);
           acceptedRef.current = accepted;
           pendingRef.current = null;
@@ -459,7 +463,7 @@ function App() {
           </section>
           <section className="principles" aria-label="처리 원칙">
             <article><span className="principle-number">01</span><h2>문서는 외부로 보내지 않아요</h2><p>파일 내용은 브라우저 메모리에서 처리합니다. 원문·파일명·문서 해시를 지속 저장하지 않습니다.</p></article>
-            <article><span className="principle-number">02</span><h2>지금은 사전 검사만 제공해요</h2><p>ZIP·XML 구조와 자원 한도를 확인합니다. 서식 검사·교정과 문서 미리보기는 아직 제공하지 않습니다.</p></article>
+            <article><span className="principle-number">02</span><h2>내용과 서식을 함께 읽어요</h2><p>ZIP·XML 구조를 확인하고 문단·표의 내용과 서식 참조를 읽습니다. 자동 교정과 한글 쪽 배치 미리보기는 아직 제공하지 않습니다.</p></article>
             <article><span className="principle-number">03</span><h2>마지막 확인은 한글에서</h2><p>사전 검사 성공은 실제 한글 조판 검증을 뜻하지 않습니다. 저장한 문서를 한글에서 열어 확인해 주세요.</p></article>
           </section>
         </>}
@@ -467,12 +471,13 @@ function App() {
         {route === 'workspace' && document && <>
           <section className="workspace-heading"><div><p className="eyebrow">문서 작업 · 사전 검사</p><h1 ref={headingRef} tabIndex={-1}>파일 구조를 확인했습니다.</h1><p>확인된 원본 바이트를 이 화면의 메모리에 보관 중입니다.</p></div><button className="button text-button" onClick={finish}>작업 종료 <span aria-hidden="true">↗</span></button></section>
           <div className="workspace-grid">
-            <section className="document-summary panel"><div className="panel-heading"><span className="small-file-icon" aria-hidden="true">H</span><div><div className="inline-badges"><span className="badge">검사 전용</span>{document.example && <span className="badge example-badge">예시 문서</span>}</div><h2>{document.name}</h2><p>{readableBytes(document.bytes.byteLength)} · HWPX</p></div></div><div className="report-heading"><h3>패키지 검사 결과</h3><span className="check-label">사전 검사 완료</span></div><dl className="report-grid"><div><dt>패키지 항목</dt><dd>{document.report.entryCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>XML 파일</dt><dd>{document.report.xmlCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>선언된 구역</dt><dd>{document.report.sectionPaths.length.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>해제 후 크기</dt><dd className="size-value">{readableBytes(document.report.uncompressedBytes)}</dd></div></dl><div className="format-row"><span>파일 형식 버전</span><strong>{document.report.formatVersion}</strong></div><details className="section-details"><summary>패키지에 선언된 구역 경로</summary><ul>{document.report.sectionPaths.map((path) => <li key={path}>{path}</li>)}</ul></details><p className="muted-note">구역 경로는 패키지 정보입니다. 문단·표 내용과 서식은 아직 분석하지 않습니다.</p></section>
+            <section className="document-summary panel"><div className="panel-heading"><span className="small-file-icon" aria-hidden="true">H</span><div><div className="inline-badges"><span className="badge">검사 전용</span>{document.example && <span className="badge example-badge">예시 문서</span>}</div><h2>{document.name}</h2><p>{readableBytes(document.bytes.byteLength)} · HWPX</p></div></div><div className="report-heading"><h3>패키지 검사 결과</h3><span className="check-label">사전 검사 완료</span></div><dl className="report-grid"><div><dt>패키지 항목</dt><dd>{document.report.entryCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>XML 파일</dt><dd>{document.report.xmlCount.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>선언된 구역</dt><dd>{document.report.sectionPaths.length.toLocaleString('ko-KR')}<small>개</small></dd></div><div><dt>해제 후 크기</dt><dd className="size-value">{readableBytes(document.report.uncompressedBytes)}</dd></div></dl><div className="format-row"><span>파일 형식 버전</span><strong>{document.report.formatVersion}</strong></div><details className="section-details"><summary>패키지에 선언된 구역 경로</summary><ul>{document.report.sectionPaths.map((path) => <li key={path}>{path}</li>)}</ul></details><p className="muted-note">문단·표의 내용과 읽을 수 있는 서식은 아래 문서 구조 보기에서 확인하세요.</p></section>
             <aside className="save-panel panel"><p className="eyebrow">원본 그대로 내보내기</p><h2>바꾸지 않은 사본을<br />내려받습니다.</h2><p>입력 파일과 동일한 바이트로 새 파일을 만듭니다. 서식이나 내용은 수정하지 않습니다.</p><div className="verification-row"><span>패키지 사전 검사</span><strong>완료</strong></div><div className="verification-row"><span>한글 화면 검수</span><strong className="unverified">미실행</strong></div><button className="button primary download-button" onClick={download} disabled={busy}>원본 그대로 내려받기 <span aria-hidden="true">↓</span></button><p className="muted-note">파일명에 ‘_원본사본’을 붙여 저장합니다.</p>{downloadStatus && <p className="download-status" role="status">{downloadStatus}</p>}<div className="replace-file" onDragOver={onDragOver} onDrop={onDrop} aria-label="새 HWPX 파일 가져오기"><p>다른 문서의 구조를 확인하려면</p>{picker}<p className="muted-note">이곳에 HWPX 한 개를 끌어 놓을 수 있습니다. 새 파일 검사에 실패하면 현재 문서를 유지합니다.</p></div></aside>
           </div>
+          <DocumentInspector key={document.jobId} inspection={document.inspection} />
         </>}
 
-        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">현재 버전은 HWPX의 안전한 입력과 무변경 사본 내보내기를 확인하는 시험판입니다.</p><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>문단·표 탐색, 서식 기준 검사와 자동 교정</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서를 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
+        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">현재 버전은 HWPX의 문서 구조·내용·서식 참조를 읽고 원본 사본을 내려받는 시험판입니다.</p><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>선언 순서에 따른 문단·표 내용과 글꼴·크기·문단 서식 참조 탐색</li><li>병합·중첩 표와 확인할 수 없는 서식의 사유 확인</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>서식 기준에 따른 검사와 자동 교정</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서를 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
       </main>
       <footer className="site-footer"><span>한글 마감실</span><p>원본은 그대로, 확인한 범위만 안내합니다.</p><span data-build-commit={__BUILD_COMMIT__} title={`빌드 ${__BUILD_COMMIT__}`}>빌드 {__BUILD_COMMIT__ === 'development' ? '개발' : __BUILD_COMMIT__.slice(0, 7)}</span><a href="#/help">지원 범위 및 개인정보</a></footer>
     </div>
