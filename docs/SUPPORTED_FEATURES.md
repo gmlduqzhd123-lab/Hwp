@@ -6,7 +6,7 @@
 | --- | --- | --- | --- | --- |
 | 패키지 식별 | 첫 STORED `mimetype=application/hwp+zip`, OCF container→OPF | 안전 입력 판별 대상 | 전체, AC-01~03 | 미실행 |
 | 한컴 패키지 관례 | OPF 끝 `/` 두 정확 URI, ZIP 루트 경로, spine header, 보조 preview/RDF rootfile | `INSPECT_ONLY`; 모호한 경로·선언은 거부 | 메모리 합성 호환성 회귀 | 미실행 |
-| 비실행 XML 메타데이터 | XSI schema hint, OPF meta.content, RDF 식별자의 제한된 문맥 | 문자열만 읽고 주소 조회·실행 없음 | XML 단위·보안·브라우저 회귀 | 미실행 |
+| 비실행 XML 메타데이터 | XSI schema hint, OPF meta.content, RDF 식별자와 hp:switch/case의 required-namespace | 정확한 문맥의 문자열만 읽고 주소 조회·실행 없음 | XML 단위·보안·브라우저 회귀 | 미실행 |
 | 버전 선언 | `major=5 minor=1 micro=0 buildNumber=0`, `xmlVersion=1.5` | 합성 입력 탐색 후보, 실제 버전 지원 미확정 | 전체 | 미실행 |
 | 일반 순수 텍스트 문단 | 한글·특수문자·연속 공백·탭·줄바꿈 | `INSPECT_ONLY` | 01, AC-05 | 미실행 |
 | 다른 namespace prefix | section/paragraph/head/core/OPF URI 동일 | `INSPECT_ONLY` | 02, AC-05 | 미실행 |
