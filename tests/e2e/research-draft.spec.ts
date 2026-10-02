@@ -62,6 +62,12 @@ async function instrument(page: Page): Promise<void> {
   });
 }
 
+async function openSection(page: Page, label: string): Promise<void> {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function ready(page: Page): Promise<void> {
   await page.goto('./#/start');
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -78,7 +84,7 @@ async function select(page: Page, buffer = fixture, name = '보고서_합성.hwp
 }
 
 async function generate(page: Page): Promise<void> {
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+  await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.', exact: true })).toBeVisible();
 }
 
@@ -141,6 +147,9 @@ test('an offline real Worker generates corrected research roles and preserves th
   page.on('pageerror', (error) => errors.push(error.message));
   await context.setOffline(true);
   await select(page);
+  await openSection(page, '공식 기준과 준비물');
+  await openSection(page, '세부 설정');
+  await openSection(page, '문단 배치 확인·수정');
   await expect(page.getByText('전국 공식 자료 확인', { exact: true })).toBeVisible();
   await expect(page.getByRole('link', { name: /2026 수업혁신사례연구대회 전국 운영계획 · 교육청 공식 게시본/u }))
     .toHaveAttribute('href', 'https://www.edus.or.kr/web/board/fileDownload/1748.do');
@@ -152,6 +161,7 @@ test('an offline real Worker generates corrected research roles and preserves th
   await page.getByLabel('대상 학생 수 (선택)', { exact: true }).fill('24');
   await page.getByLabel('문단 2의 배치 항목', { exact: true }).selectOption('appendix');
   await generate(page);
+  await openSection(page, '다운로드 후 확인');
   await expect(page.getByText('한글에서 쪽수·서식 검수', { exact: true }).locator('..')).toContainText('미실행');
   await expect(page.getByText('내려받은 파일 저장 확인', { exact: true }).locator('..')).toContainText('미확인');
   const draft = await download(page, '생성한 초안 내려받기');
@@ -182,6 +192,8 @@ test('an offline real Worker generates corrected research roles and preserves th
 test('editing draft settings invalidates prior generated output while browsing source text keeps it', async ({ page }) => {
   await ready(page);
   await select(page);
+  await openSection(page, '세부 설정');
+  await openSection(page, '문단 배치 확인·수정');
   await page.getByLabel('연구 제목', { exact: false }).fill('첫 번째 합성 초안');
   await generate(page);
   await page.getByLabel('원문 문단 검색', { exact: true }).fill('연구 결과');
@@ -205,8 +217,9 @@ test('editing draft settings invalidates prior generated output while browsing s
   }
   const competition = await download(page, '생성한 초안 내려받기');
   expect(paragraphs(competition.bytes).map((paragraph) => paragraph.text)).toContain('연구형태: 개인연구');
-  await page.getByRole('button', { name: '논문 참고 구성', exact: true }).click();
+  await page.getByRole('combobox', { name: '대회 선택', exact: true }).selectOption('paper');
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
+  await openSection(page, '공식 기준과 준비물');
   await expect(page.getByText('개인 참고 · 공식 기준 아님', { exact: true })).toBeVisible();
   await generate(page);
   const paper = await download(page, '생성한 초안 내려받기');
@@ -228,10 +241,11 @@ test('cancelling a real completed draft ignores its late reply and regenerates f
   page.on('request', (request) => { if (/^https?:/u.test(request.url())) requests.push(request.url()); });
   await context.setOffline(true);
   await select(page);
+  await openSection(page, '문단 배치 확인·수정');
   await page.getByLabel('연구 제목', { exact: false }).fill('취소 후 합성 초안');
   await page.getByLabel('문단 2의 배치 항목', { exact: true }).selectOption('reflection');
   await page.evaluate(() => { (window as typeof window & { researchHarness: Harness }).researchHarness.holdDrafts = true; });
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+  await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
   await page.waitForFunction(() => (window as typeof window & { researchHarness: Harness }).researchHarness.heldDrafts === 1);
   await expect(page.getByLabel('연구 제목', { exact: false })).toBeDisabled();
   await page.getByRole('button', { name: '초안 생성 취소', exact: true }).click();
@@ -263,9 +277,9 @@ test('a document containing a table blocks reconstruction and retains its exact 
   const source = Buffer.from(makeResearchFixture({ includeTable: true }));
   await ready(page);
   await select(page, source, '표가있는_합성.hwpx');
-  await expect(page.getByRole('heading', { name: '이 문서는 초안 생성 범위를 벗어납니다.', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '생성할 수 없는 이유', exact: true })).toBeVisible();
   await expect(page.getByText('표가 있는 문서는 초안을 만들 수 없습니다. 표를 포함한 원본 사본은 계속 내려받을 수 있습니다.', { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   expect((await download(page, '원본 그대로 내려받기')).bytes).toEqual(source);
 });
@@ -274,6 +288,8 @@ test('help navigation preserves draft settings and binds a completed or pending 
   await instrument(page);
   await ready(page);
   await select(page);
+  await openSection(page, '세부 설정');
+  await openSection(page, '문단 배치 확인·수정');
   await page.getByLabel('연구 제목', { exact: false }).fill('화면 이동 합성 보고서');
   await page.getByLabel('교과·주제 (선택)', { exact: true }).fill('합성 사회');
   await page.getByLabel('연구 형태 (선택)', { exact: true }).selectOption('joint');
@@ -287,7 +303,7 @@ test('help navigation preserves draft settings and binds a completed or pending 
   await expect(page.getByRole('heading', { name: '지원 범위와 처리 방식', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: '작업 문서로 돌아가기', exact: true }).click();
-  await expect(page.getByRole('button', { name: '수업혁신사례연구대회 보고서', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('combobox', { name: '대회 선택', exact: true })).toHaveValue('innovation');
   await expect(page.getByLabel('연구 제목', { exact: false })).toHaveValue('화면 이동 합성 보고서');
   await expect(page.getByLabel('교과·주제 (선택)', { exact: true })).toHaveValue('합성 사회');
   await expect(page.getByLabel('연구 형태 (선택)', { exact: true })).toHaveValue('joint');
@@ -297,7 +313,7 @@ test('help navigation preserves draft settings and binds a completed or pending 
   expect((await download(page, '생성한 초안 내려받기')).bytes).toEqual(before.bytes);
   expect(await page.evaluate(() => (window as typeof window & { researchHarness: Harness }).researchHarness.draftRequests)).toBe(1);
 
-  await page.getByRole('button', { name: '논문 참고 구성', exact: true }).click();
+  await page.getByRole('combobox', { name: '대회 선택', exact: true }).selectOption('paper');
   await expect(page.getByLabel('교과·주제 (선택)', { exact: true })).not.toBeVisible();
   await expect(page.getByLabel('연구 형태 (선택)', { exact: true })).not.toBeVisible();
   await expect(page.getByLabel('대상 학년 (선택)', { exact: true })).not.toBeVisible();
@@ -306,7 +322,7 @@ test('help navigation preserves draft settings and binds a completed or pending 
   await page.getByLabel('연구 제목', { exact: false }).fill('이동 중 생성한 합성 논문');
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   await page.evaluate(() => { (window as typeof window & { researchHarness: Harness }).researchHarness.holdDrafts = true; });
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+  await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
   await page.waitForFunction(() => (window as typeof window & { researchHarness: Harness }).researchHarness.heldDrafts === 1);
   await help.click();
   await expect(page.getByRole('heading', { name: '지원 범위와 처리 방식', exact: true })).toBeVisible();
@@ -318,7 +334,7 @@ test('help navigation preserves draft settings and binds a completed or pending 
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: '작업 문서로 돌아가기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: '논문 참고 구성', exact: true })).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.getByRole('combobox', { name: '대회 선택', exact: true })).toHaveValue('paper');
   await expect(page.getByLabel('연구 제목', { exact: false })).toHaveValue('이동 중 생성한 합성 논문');
   await expect(page.getByLabel('교과·주제 (선택)', { exact: true })).not.toBeVisible();
   await expect(page.getByLabel('연구 형태 (선택)', { exact: true })).not.toBeVisible();
@@ -331,7 +347,7 @@ test('help navigation preserves draft settings and binds a completed or pending 
   expect(paragraphs(after.bytes).map((paragraph) => paragraph.text)).toContain('이동 중 생성한 합성 논문');
   expect(await page.evaluate(() => (window as typeof window & { researchHarness: Harness }).researchHarness.draftRequests)).toBe(2);
   expect((await download(page, '원본 그대로 내려받기')).bytes).toEqual(fixture);
-  await page.getByRole('button', { name: '수업혁신사례연구대회 보고서', exact: true }).click();
+  await page.getByRole('combobox', { name: '대회 선택', exact: true }).selectOption('innovation');
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('교과·주제 (선택)', { exact: true })).toHaveValue('합성 사회');
   await expect(page.getByLabel('연구 형태 (선택)', { exact: true })).toHaveValue('joint');
@@ -350,6 +366,7 @@ test('draft review bounds long paragraph lists and text windows while keeping ro
   const source = Buffer.from(zipSync(entries, { level: 0 }));
   await ready(page);
   await select(page, source, '긴원문_합성.hwpx');
+  await openSection(page, '문단 배치 확인·수정');
   await expect(page.locator('.draft-paragraph-card')).toHaveCount(40);
   await page.getByRole('button', { name: '문단 1 원문 펼치기', exact: true }).click();
   await expect(page.locator('.draft-source-text').first()).toHaveText('가'.repeat(2999));

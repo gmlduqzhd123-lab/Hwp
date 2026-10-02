@@ -122,6 +122,12 @@ function assertBodyFormat(bytes: Uint8Array, height: number, line: number): void
   }
 }
 
+async function openSection(page: Page, label: string): Promise<void> {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function ready(page: Page): Promise<void> {
   await page.goto('./#/start');
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -136,15 +142,17 @@ async function selectOriginal(page: Page): Promise<void> {
 async function selectProfile(page: Page, id: string): Promise<void> {
   const profile = getDraftProfile(id);
   if (!profile) throw new Error(`Missing test profile: ${id}`);
+  await openSection(page, '세부 설정');
   await page.getByLabel('대회 검색', { exact: true }).fill('');
   await page.getByRole('combobox', { name: '대회 선택', exact: true }).selectOption(profile.competitionId);
   const yearInput = page.getByRole('combobox', { name: '기준 연도', exact: true });
   if (await yearInput.inputValue() !== String(profile.year)) await yearInput.selectOption(String(profile.year));
-  await page.getByRole('combobox', { name: '문서·분과 선택', exact: true }).selectOption(id);
+  const documentInput = page.getByRole('combobox', { name: '문서·분과 선택', exact: true });
+  if (await documentInput.count()) await documentInput.selectOption(id);
 }
 
 async function generate(page: Page): Promise<void> {
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+  await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.', exact: true })).toBeVisible();
 }
 
@@ -208,7 +216,7 @@ test('national mutation restrictions prevent Worker generation and retain the or
   for (const id of ['character-teacher-report', 'ebs-review-description']) {
     await selectProfile(page, id);
     await page.getByRole('combobox', { name: '작성 단계', exact: true }).selectOption('national');
-    await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+    await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
     await expect(page.locator('.draft-blocker')).toBeVisible();
     await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
     expect((await download(page, '원본 그대로 내려받기'))).toEqual(fixture);
@@ -227,7 +235,7 @@ test('a reviewed summary outputs selected original paragraphs and reports the ex
     if ([1, 4, 8].includes(number)) await checkbox.check();
     else await checkbox.uncheck();
   }
-  await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
   await expect(page.locator('.draft-summary-review > p[role="status"]')).toHaveText('선택한 3/전체 10 문단만 요약 후보에 포함, 나머지 문단은 원본에 보존합니다.');
   await page.getByLabel('선택한 원문만 요약 초안에 포함하는 것을 확인했습니다.', { exact: true }).check();
   await generate(page);
@@ -235,13 +243,14 @@ test('a reviewed summary outputs selected original paragraphs and reports the ex
   await expectSource(summary, [0, 3, 7]);
   assertBodyFormat(summary, 1100, 140);
   await expect(page.locator('.draft-result')).toContainText('전체 원문 10개 중 3개 문단을 요약 초안에 포함하고 7개는 원본에 보존합니다.');
+  await openSection(page, '다운로드 후 확인');
   await expect(page.locator('.draft-verification')).toContainText('선택한 원문 텍스트 보존 확인');
   expect((await download(page, '원본 그대로 내려받기'))).toEqual(fixture);
   expect(await page.evaluate(() => (window as typeof window & { catalogHarness: Harness }).catalogHarness.selections.at(-1)))
     .toMatchObject({ profileId: 'field-summary', assignmentCount: 10, selectedCount: 3 });
   await page.getByLabel('문단 1을 요약 후보로 선택', { exact: true }).uncheck();
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
 });
 
 test('previous-year guidance is labelled honestly and a custom reference respects bounded actual output', async ({ page }) => {
@@ -250,6 +259,7 @@ test('previous-year guidance is labelled honestly and a custom reference respect
   await page.getByLabel('연구 제목', { exact: false }).fill('개인 참고 기준 합성 원고');
   await selectProfile(page, 'teacher-invention-report');
   await expect(page.getByRole('combobox', { name: '기준 연도', exact: true })).toHaveValue('2025');
+  await openSection(page, '공식 기준과 준비물');
   await expect(page.locator('.draft-official-profile')).toContainText('2025');
   await expect(page.locator('.draft-official-profile')).toContainText(/최신|2026.*미확인|당해/u);
   await selectProfile(page, 'custom');
@@ -264,7 +274,7 @@ test('previous-year guidance is labelled honestly and a custom reference respect
   await expect(page.locator('.draft-official-profile')).toContainText(/개인|참고/u);
   await page.getByLabel('참고 글자 크기 (pt)', { exact: true }).fill('5');
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
   expect((await download(page, '원본 그대로 내려받기'))).toEqual(fixture);
 });
 
@@ -276,7 +286,7 @@ test('a real generated result must match the reviewed profile and selection befo
   await selectProfile(page, 'field-report');
   for (const fault of ['profile-id', 'profile-year', 'included-count'] as const) {
     await page.evaluate((value) => { (window as typeof window & { resultHarness: ResultHarness }).resultHarness.fault = value; }, fault);
-    await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+    await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
     await expect(page.getByRole('alert')).toContainText('생성 결과가 검토한 대회·기준·문단 선택과 일치하지 않습니다.');
     await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.', exact: true })).toHaveCount(0);
     await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
@@ -285,7 +295,7 @@ test('a real generated result must match the reviewed profile and selection befo
     expect(await page.evaluate(() => (window as typeof window & { resultHarness: ResultHarness }).resultHarness.captured
       .every(({ bytes }) => bytes.byteLength > 0 && new Uint8Array(bytes).every((value) => value === 0)))).toBe(true);
     expect((await download(page, '원본 그대로 내려받기'))).toEqual(fixture);
-    await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeEnabled();
+    await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeEnabled();
   }
   await generate(page);
   await expect(page.getByRole('alert')).toHaveCount(0);

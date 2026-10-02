@@ -7,6 +7,12 @@ import { makeHancomPackage } from '../helpers/hancom-package';
 const fixturePath = new URL('../fixtures/01-plain-text.hwpx', import.meta.url);
 const fixture = await readFile(fixturePath);
 
+async function openSection(page: Page, label: string): Promise<void> {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function ready(page: Page) {
   await page.goto('./#/start');
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
@@ -40,7 +46,7 @@ test('Worker inspection and saved HWPX preserve every input byte and reopen inde
   page.on('pageerror', (error) => errors.push(error.message));
   await ready(page);
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.getByRole('heading', { name: '합성문서.hwpx' })).toBeVisible();
   await expect(page.getByText('5.1.0.0', { exact: true })).toBeVisible();
   const output = await downloadBytes(page);
@@ -61,7 +67,7 @@ test('documented Hancom package with inert URL metadata works offline through th
   page.on('pageerror', (error) => errors.push(error.message));
   await context.setOffline(true);
   await select(page, input, '한컴구조_합성.hwpx');
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.getByText('5.1.1.0', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   const output = await downloadBytes(page);
@@ -78,7 +84,7 @@ test('preloaded synthetic example works offline with no post-readiness requests 
   page.on('request', (request) => requests.push(request.url()));
   await context.setOffline(true);
   await page.getByRole('button', { name: '예시 문서로 체험' }).click();
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.getByText('예시 문서', { exact: true })).toBeVisible();
   expect(await downloadBytes(page)).toEqual(fixture);
   const storage = await page.evaluate(async () => ({
@@ -95,7 +101,7 @@ test('preloaded synthetic example works offline with no post-readiness requests 
 test('wrong format and CRC damage fail safely while the previous validated original remains exportable', async ({ page }) => {
   await ready(page);
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await select(page, Buffer.from('%PDF-1.7\nPRIVATE_SYNTHETIC_MARKER'), 'renamed.hwpx');
   await expect(page.getByRole('alert')).toContainText('FILE_UNSUPPORTED');
   expect(await downloadBytes(page)).toEqual(fixture);
@@ -122,7 +128,7 @@ test('a real DEFLATE package is inspected in the offline Worker and exported wit
   page.on('request', (request) => requests.push(request.url()));
   await context.setOffline(true);
   await select(page, compressed, '압축문서.hwpx');
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   expect(await downloadBytes(page)).toEqual(compressed);
   expect(requests).toEqual([]);
 });
@@ -133,7 +139,7 @@ test('oversized input is refused before processing and a valid input still works
   await expect(page.getByRole('alert')).toContainText('RESOURCE_LIMIT');
   await expect(page.getByRole('button', { name: '원본 그대로 내려받기' })).toHaveCount(0);
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
 });
 
 test('DTD input cannot trigger external requests or script execution and the UI recovers', async ({ page }) => {
@@ -151,7 +157,7 @@ test('DTD input cannot trigger external requests or script execution and the UI 
   await expect(page.getByRole('alert')).not.toContainText('PRIVATE_SYNTHETIC_MARKER');
   expect(requests).toEqual([]);
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
 });
 
 test('XML failures show the actual reason without document values and permit a subsequent valid file', async ({ page }) => {
@@ -175,7 +181,7 @@ test('XML failures show the actual reason without document values and permit a s
     await expect(alert).not.toContainText('https:');
   }
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   expect(await downloadBytes(page)).toEqual(fixture);
   expect(requests).toEqual([]);
 });
@@ -183,12 +189,12 @@ test('XML failures show the actual reason without document values and permit a s
 test('ending or refreshing a workspace removes the document and unknown hashes recover', async ({ page }) => {
   await ready(page);
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await page.getByRole('button', { name: '작업 종료' }).click();
   await expect(page.getByRole('button', { name: '원본 그대로 내려받기' })).toHaveCount(0);
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
   await select(page);
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await page.reload();
   await expect(page).toHaveURL(/#\/start$/);
   await expect(page.getByRole('button', { name: '원본 그대로 내려받기' })).toHaveCount(0);
@@ -207,5 +213,5 @@ test('a failed Worker disables input and retry initializes a working inspection'
   await page.getByRole('button', { name: '준비 다시 시도' }).click();
   await expect(page.getByText('로컬 검사 준비 완료', { exact: false })).toBeVisible();
   await page.getByRole('button', { name: '예시 문서로 체험' }).click();
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
 });

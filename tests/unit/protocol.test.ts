@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createErrorResponse, isJobId, isWorkerRequest, PROTOCOL_VERSION } from '../../src/workers/protocol';
 import { ERROR_MESSAGES, XML_UNSUPPORTED_MESSAGES, type ErrorCode } from '../../src/domain/errors';
+import { DRAFT_LIMITS } from '../../src/domain/research';
 
 function inspection(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
@@ -9,6 +10,16 @@ function inspection(overrides: Record<string, unknown> = {}): Record<string, unk
     jobId: 'job_1',
     bytes: new ArrayBuffer(4),
     fileName: 'synthetic.hwpx',
+    ...overrides,
+  };
+}
+
+function plainText(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    type: 'TEXT',
+    protocolVersion: PROTOCOL_VERSION,
+    jobId: 'text_1',
+    text: '직접 입력한 합성 원고\n두 번째 문단',
     ...overrides,
   };
 }
@@ -87,5 +98,48 @@ describe('Worker error boundary', () => {
       type: 'ERROR', protocolVersion: PROTOCOL_VERSION, jobId: 'job_1',
       code: 'FILE_INVALID_PACKAGE', message: ERROR_MESSAGES.FILE_INVALID_PACKAGE,
     });
+  });
+});
+
+describe('direct text Worker request boundary', () => {
+  it('accepts bounded literal text without treating it as a file or a command', () => {
+    expect(isWorkerRequest(plainText())).toBe(true);
+    expect(isWorkerRequest(plainText({ text: '<script src="https://example.invalid/synthetic.js">합성 문장</script>' }))).toBe(true);
+    expect(isWorkerRequest(plainText({ text: '  한글\t원고\r\n🙂 &amp;  ' }))).toBe(true);
+  });
+
+  it.each([null, undefined, true, 12, {}, ['합성 원고'], new Uint8Array([1])])(
+    'requires a text string instead of a coercible value (%#)',
+    (text) => {
+      expect(isWorkerRequest(plainText({ text }))).toBe(false);
+    },
+  );
+
+  it.each(['', ' ', '\t\r\n'])('rejects empty or whitespace-only source text (%#)', (text) => {
+    expect(isWorkerRequest(plainText({ text }))).toBe(false);
+  });
+
+  it('caps source characters before sending work to the engine', () => {
+    expect(isWorkerRequest(plainText({ text: '한'.repeat(DRAFT_LIMITS.maxTextCharacters) }))).toBe(true);
+    expect(isWorkerRequest(plainText({ text: '한'.repeat(DRAFT_LIMITS.maxTextCharacters + 1) }))).toBe(false);
+  });
+
+  it('leaves room for the generated section carrier within the paragraph limit', () => {
+    expect(isWorkerRequest(plainText({ text: Array(DRAFT_LIMITS.maxParagraphs - 1).fill('합성').join('\n') }))).toBe(true);
+    expect(isWorkerRequest(plainText({ text: Array(DRAFT_LIMITS.maxParagraphs).fill('합성').join('\n') }))).toBe(false);
+  });
+
+  it.each(['', 'x'.repeat(129), '<script>', '../private', 'text\n1', null, 1])(
+    'does not reflect unsafe text-job identifiers (%#)',
+    (jobId) => {
+      expect(isWorkerRequest(plainText({ jobId }))).toBe(false);
+    },
+  );
+
+  it('requires the exact supported protocol and request discriminant', () => {
+    expect(isWorkerRequest(plainText({ protocolVersion: PROTOCOL_VERSION - 1 }))).toBe(false);
+    expect(isWorkerRequest(plainText({ protocolVersion: String(PROTOCOL_VERSION) }))).toBe(false);
+    expect(isWorkerRequest(plainText({ type: 'TEXT_READY' }))).toBe(false);
+    expect(isWorkerRequest(plainText({ type: 'TEXT_IMPORT' }))).toBe(false);
   });
 });

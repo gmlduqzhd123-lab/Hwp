@@ -53,7 +53,8 @@ function serializedParagraphs(bytes) {
 }
 
 function sourceParagraphTexts(bytes) {
-  return serializedParagraphs(bytes).filter(({ id }) => Number(id) >= 1000 && Number(id) < 10_000).map(({ text }) => text);
+  return serializedParagraphs(bytes).filter(({ id }) => Number(id) >= 1000 && Number(id) < 10_000)
+    .sort((left, right) => Number(left.id) - Number(right.id)).map(({ text }) => text);
 }
 
 function assertSerializedSource(bytes) {
@@ -105,7 +106,14 @@ function assertSerializedBody(bytes, expected) {
   }
 }
 
+async function openSection(page, label) {
+  const details = page.locator('details').filter({ has: page.getByText(label, { exact: true }) });
+  await expect(details).toHaveCount(1);
+  if (await details.getAttribute('open') === null) await details.locator(':scope > summary').click();
+}
+
 async function selectCatalogProfile(page, competitionId, profileId, year = 2026) {
+  await openSection(page, '세부 설정');
   await page.getByLabel('대회 검색', { exact: true }).fill('');
   await page.getByRole('combobox', { name: '대회 선택', exact: true }).selectOption(competitionId);
   const yearInput = page.getByRole('combobox', { name: '기준 연도', exact: true });
@@ -114,7 +122,7 @@ async function selectCatalogProfile(page, competitionId, profileId, year = 2026)
 }
 
 async function generateAndDownload(page) {
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true }).click();
+  await page.getByRole('button', { name: '초안 만들기', exact: true }).click();
   await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.', exact: true })).toBeVisible();
   const pending = page.waitForEvent('download');
   await page.getByRole('button', { name: '생성한 초안 내려받기', exact: true }).click();
@@ -175,14 +183,8 @@ try {
   });
   await context.setOffline(true);
   await page.getByRole('button', { name: '예시 문서로 체험' }).click();
-  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '만들 문서를 선택하세요', exact: true })).toBeVisible();
   await expect(page.getByText('예시 문서', { exact: true })).toBeVisible();
-  await expect(page.getByText('5.1.0.0', { exact: true })).toBeVisible();
-  await expect(page.getByRole('heading', { name: '문서 구조 보기', exact: true })).toBeVisible();
-  await expect(page.locator('.inspector-paragraph')).toHaveCount(2);
-  await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text').first()).toHaveText('합성 연구 보고서');
-  await page.locator('.inspector-paragraph').first().locator('summary').click();
-  await expect(page.locator('.inspector-paragraph').first().getByText('11 pt', { exact: true })).toBeVisible();
   const requested = page.waitForEvent('download');
   await page.getByRole('button', { name: '원본 그대로 내려받기' }).click();
   const download = await requested;
@@ -193,8 +195,10 @@ try {
 
   // Exercise the actual public Worker and independently reopen its offline output.
   await expect(page.getByRole('heading', { name: '보고서·논문 초안 만들기' })).toBeVisible();
-  await page.getByLabel('연구 제목').fill('배포 검증용 합성 연구');
-  await page.getByRole('button', { name: '검토한 내용으로 초안 생성' }).click();
+  await expect(page.getByLabel('연구 제목')).toHaveValue('합성_예시문서');
+  await expect(page.getByLabel('교과·주제 (선택)', { exact: true })).not.toBeVisible();
+  await expect(page.getByLabel('원문 문단 검색', { exact: true })).not.toBeVisible();
+  await page.getByRole('button', { name: '초안 만들기' }).click();
   await expect(page.getByRole('heading', { name: '새 HWPX 초안을 만들었습니다.' })).toBeVisible();
   const draftDownload = page.waitForEvent('download');
   await page.getByRole('button', { name: '생성한 초안 내려받기' }).click();
@@ -204,7 +208,15 @@ try {
   assert.deepEqual(sourceParagraphTexts(draftBytes), fixtureGolden.paragraphsInDeclaredOrder);
   assertSerializedSource(draftBytes);
   assertSerializedBody(draftBytes, { height: 1200, line: 160, face: '휴먼명조' });
+  await openSection(page, '다운로드 후 확인');
   await expect(page.locator('.draft-verification').getByText('미실행', { exact: true })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
+  await expect(page.getByText('5.1.0.0', { exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '문서 구조 보기', exact: true })).toBeVisible();
+  await expect(page.locator('.inspector-paragraph')).toHaveCount(2);
+  await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text').first()).toHaveText('합성 연구 보고서');
+  await page.locator('.inspector-paragraph').first().locator('summary').click();
+  await expect(page.locator('.inspector-paragraph').first().getByText('11 pt', { exact: true })).toBeVisible();
   await page.getByLabel('연구 제목').fill('검토 중인 새 제목');
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기' })).toHaveCount(0);
 
@@ -235,7 +247,7 @@ try {
   const draftsBeforeBlockedStage = await page.evaluate(() => window.publicSmokeDraftRequests);
   await page.getByRole('combobox', { name: '작성 단계', exact: true }).selectOption('national');
   await expect(page.locator('.draft-blocker')).toBeVisible();
-  await expect(page.getByRole('button', { name: '검토한 내용으로 초안 생성', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
   await expect(page.getByRole('button', { name: '생성한 초안 내려받기', exact: true })).toHaveCount(0);
   assert.equal(await page.evaluate(() => window.publicSmokeDraftRequests), draftsBeforeBlockedStage, 'A blocked national stage dispatched a draft request.');
 
@@ -250,6 +262,7 @@ try {
     name: '배포검증_합성.hwpx', mimeType: 'application/hwp+zip', buffer: replacement,
   });
   await expect(page.getByRole('heading', { name: '배포검증_합성.hwpx' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.locator('.report-grid > div').filter({ has: page.locator('dt', { hasText: '선언된 구역' }) }).locator('dd')).toHaveText(/^3개$/);
   await expect(page.locator('.inspector-paragraph > .inspector-text-window > .inspector-document-text')).toHaveText('선언 순서 첫 번째');
   await page.getByRole('combobox', { name: '구역 선택', exact: true }).selectOption({ index: 2 });
@@ -266,6 +279,7 @@ try {
     name: '한컴구조_합성.hwpx', mimeType: 'application/hwp+zip', buffer: hancom,
   });
   await expect(page.getByRole('heading', { name: '한컴구조_합성.hwpx' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await expect(page.getByText('5.1.1.0', { exact: true })).toBeVisible();
   await expect(page.getByRole('alert')).toHaveCount(0);
   const hancomDownload = page.waitForEvent('download');
@@ -280,6 +294,7 @@ try {
     name: '단순표_합성.hwpx', mimeType: 'application/hwp+zip', buffer: tableFixture,
   });
   await expect(page.getByRole('heading', { name: '단순표_합성.hwpx' })).toBeVisible();
+  await openSection(page, '문서 검사 상세');
   await page.getByRole('button', { name: '표 보기', exact: true }).click();
   await expect(page.locator('.inspector-table')).toHaveCount(1);
   assert.deepEqual(await page.locator('.inspector-cell-table .inspector-document-text').allTextContents(), ['첫째 칸', '둘째 칸', '셋째 칸', '넷째 칸']);
@@ -288,6 +303,38 @@ try {
   const tablePath = await (await tableDownload).path();
   assert.ok(tablePath, 'The table inspection did not produce a downloadable file.');
   assert.deepEqual(await readFile(tablePath), tableFixture, 'Table inspection changed the original bytes.');
+
+  // A blocked input must explain the unavailable action while its editable
+  // settings and explicit text-only alternative continue to work offline.
+  await expect(page.getByLabel('연구 제목', { exact: true })).toBeEnabled();
+  await page.getByLabel('연구 제목', { exact: true }).fill('표 원본의 설정은 계속 수정 가능');
+  await expect(page.getByRole('button', { name: '초안 만들기', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: '글을 붙여넣어 새로 시작', exact: true }).click();
+  const pastedLines = ['배포 검증용 붙여넣은 글', '', '<img src="https://outside.invalid/synthetic" onerror="window.publicPasteExecuted=true">', '한글 & 😀 그대로 보존'];
+  await page.getByRole('textbox', { name: '보고서로 만들 글', exact: true }).fill(pastedLines.join('\n'));
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: '이 글로 시작하기', exact: true }).click();
+  await expect(page.getByRole('heading', { name: '붙여넣은 글.hwpx', exact: true })).toBeVisible();
+  await expect(page.getByLabel('연구 제목', { exact: true })).toHaveValue('붙여넣은 글');
+  await expect(page.getByLabel('학교급 선택', { exact: true })).not.toBeVisible();
+  await expect(page.getByLabel('원문 문단 검색', { exact: true })).not.toBeVisible();
+  const pastedSourceDownload = page.waitForEvent('download');
+  await page.getByRole('button', { name: '원본 그대로 내려받기', exact: true }).click();
+  const pastedSourcePath = await (await pastedSourceDownload).path();
+  assert.ok(pastedSourcePath, 'No actual text-source package was downloadable.');
+  const pastedSource = await readFile(pastedSourcePath);
+  const sourceParagraphs = serializedParagraphs(pastedSource);
+  assert.deepEqual(sourceParagraphs.map(({ text }) => text), ['', ...pastedLines], 'The new text source must contain its separate empty layout carrier and all entered lines.');
+  assert.equal(sourceParagraphs[0].id, '0', 'The separate empty carrier is not a user paragraph.');
+  assert.deepEqual(sourceParagraphTexts(pastedSource), pastedLines, 'The actual text source changed the entered lines or blanks.');
+  const pastedDraft = await generateAndDownload(page);
+  assert.deepEqual(sourceParagraphTexts(pastedDraft), sourceParagraphs.map(({ text }) => text), 'The real generated draft did not preserve every source paragraph, including its empty layout carrier.');
+  assertSerializedBody(pastedDraft, { height: 1200, line: 160, face: '휴먼명조' });
+  assert.equal(await page.evaluate(() => window.publicPasteExecuted ?? false), false, 'Pasted markup executed.');
+  await expect(page.locator('.research-draft-panel img, .research-draft-panel iframe')).toHaveCount(0);
+  assert.deepEqual(await page.evaluate(async () => ({ local: Object.keys(localStorage), session: Object.keys(sessionStorage),
+    databases: (await indexedDB.databases()).map((database) => database.name), caches: await caches.keys() })),
+  { local: [], session: [], databases: [], caches: [] }, 'Pasted text left persistent browser data.');
   assert.deepEqual(requests, [], 'A prepared app requested HTTP resources while processing documents offline.');
   await context.setOffline(false);
   await page.reload({ waitUntil: 'domcontentloaded' });
@@ -307,6 +354,8 @@ try {
     documentReading: 'paragraphs, character size, spine order and table cells passed offline',
     researchDraft: 'generated offline, independently reopened, source text preserved, stale output cleared',
     competitionDrafts: 'same original, field 11pt/140%, approved teacher addition, blocked national stage passed offline',
+    simpleWorkflow: 'prefilled title and actual draft without opening advanced controls',
+    textSource: 'blocked input remains editable; deliberate text-only restart preserves blank lines and inert markup offline',
   }));
 } finally {
   await browser.close();
