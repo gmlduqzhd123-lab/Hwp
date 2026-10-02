@@ -1,7 +1,8 @@
 import type { DocumentInspection, InspectionReason } from '../../domain/document';
-import { DRAFT_LIMITS, DRAFT_ROLES, type DraftPage, type DraftRecommendation, type DraftRole, type ResearchDraftKind, type ResearchDraftOptions } from '../../domain/research';
+import { DRAFT_LIMITS, type DraftPage, type DraftRecommendation, type DraftRole, type ResearchDraftKind, type ResearchDraftOptions } from '../../domain/research';
 import { EngineError } from '../../domain/errors';
 import { isResearchDraftOptions } from '../../domain/research';
+import { getEffectiveDraftProfile } from '../../domain/competitions';
 
 export const DRAFT_ROLE_LABELS: Record<ResearchDraftKind, Record<DraftRole, string>> = {
   competition: { summary: '요약서', need: '연구의 필요성과 목적', design: '수업 설계와 연구 방법', practice: '수업 실행', results: '실행 결과와 근거', reflection: '성찰·환류와 확산', references: '참고문헌', appendix: '부록' },
@@ -56,7 +57,17 @@ const LEADING_SIGNALS: Array<{ role: DraftRole; pattern: RegExp; label: string }
 ];
 
 /** Local keyword recommendations are suggestions, never assertions about research. */
-export function recommendDraft(inspection: DocumentInspection, kind: ResearchDraftKind): DraftRecommendation {
+export function recommendDraft(inspection: DocumentInspection, kind: ResearchDraftKind, selection?: string | Partial<ResearchDraftOptions>): DraftRecommendation {
+  let profile;
+  try {
+    if (typeof selection === 'object' && selection.kind !== undefined && selection.kind !== kind) throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid draft kind.');
+    profile = getEffectiveDraftProfile({ kind, title: '초안', subject: '', grade: '', studentCount: '', assignments: [],
+      ...(typeof selection === 'string' ? { profileId: selection } : selection) });
+    if (profile.policy === 'guide-only') throw new EngineError('FILE_UNSUPPORTED', 'Unsupported draft profile.');
+  } catch {
+    return { eligible: false, blockers: ['선택한 대회·연도·단계·학교급 또는 사용자 서식으로 초안을 생성할 수 없습니다.'], paragraphs: [], warnings: [] };
+  }
+  const roles = profile.roles;
   const blockers: string[] = [];
   if (inspection.tables.length > 0) blockers.push('표가 있는 문서는 초안을 만들 수 없습니다. 표를 포함한 원본 사본은 계속 내려받을 수 있습니다.');
   if (inspection.paragraphs.some((paragraph) => paragraph.context !== 'BODY')) blockers.push('머리말·꼬리말·각주·보호 영역 등이 포함되어 텍스트 초안 생성을 중단했습니다.');
@@ -81,15 +92,19 @@ export function recommendDraft(inspection: DocumentInspection, kind: ResearchDra
     const outer = SIGNALS.slice(0, 3).find((signal) => signal.pattern.test(paragraph.text));
     const signal = outer ?? LEADING_SIGNALS.find((signal) => signal.pattern.test(paragraph.text.slice(0, 120)))
       ?? SIGNALS.slice(3).find((signal) => signal.pattern.test(paragraph.text));
-    return { paragraphId: paragraph.nodeId, text: paragraph.text, role: signal?.role ?? 'need', evidence: signal?.label ?? '분류 단서 없음 · 직접 확인 필요' };
+    const suggested = signal?.role ?? 'need';
+    const role = profile.documentType === 'summary' ? 'summary' : roles.includes(suggested) ? suggested : roles.includes('need') ? 'need' : roles[0];
+    if (!role) throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid draft profile.');
+    return { paragraphId: paragraph.nodeId, text: paragraph.text, role,
+      evidence: profile.policy === 'format-only' ? '원문 순서 유지 · 서식만 적용' : profile.documentType === 'summary' ? '원문 전체를 요약서 구성에 배치 · 요약문을 새로 만들지 않음' : signal?.label ?? '분류 단서 없음 · 직접 확인 필요' };
   }) : [];
   const assigned = new Set(paragraphs.filter((paragraph) => paragraph.text.trim()).map((paragraph) => paragraph.role));
-  const missing = DRAFT_ROLES.filter((role) => !assigned.has(role));
+  const missing = roles.filter((role) => !assigned.has(role));
   return {
     eligible: blockers.length === 0, blockers: [...new Set(blockers)], paragraphs,
     warnings: [
-      '문단의 문장은 그대로 유지하며 역할별로 순서를 바꿉니다. 글꼴·기존 강조·쪽 배치는 새 초안 양식으로 바뀝니다.',
-      ...(missing.length ? [`자동 분류에서 찾지 못한 구성: ${missing.map((role) => DRAFT_ROLE_LABELS[kind][role]).join(', ')}. 필요한 연구 내용은 직접 작성해 주세요.`] : []),
+      profile.policy === 'format-only' ? '문단의 문장과 순서를 그대로 유지하며 서식만 바꿉니다. 새 구성 제목과 교사 보충 문단을 넣지 않습니다.' : '문단의 문장은 그대로 유지하며 역할별로 순서를 바꿉니다. 글꼴·기존 강조·쪽 배치는 새 초안 양식으로 바뀝니다.',
+      ...(missing.length && profile.policy !== 'format-only' ? [`자동 분류에서 찾지 못한 구성: ${missing.map((role) => profile.labels[role]).join(', ')}. 필요한 연구 내용은 직접 작성해 주세요.`] : []),
       '키워드에 따른 분류이므로 적용 전에 문단의 역할을 확인해 주세요. 수치·연구 결과·인용문을 새로 만들지 않습니다.',
     ],
   };
@@ -97,7 +112,18 @@ export function recommendDraft(inspection: DocumentInspection, kind: ResearchDra
 
 export function validateDraftAssignments(inspection: DocumentInspection, options: unknown): asserts options is ResearchDraftOptions {
   if (!isResearchDraftOptions(options)) throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid draft request.');
-  const recommendation = recommendDraft(inspection, options.kind);
+  const profile = getEffectiveDraftProfile(options);
+  if (profile.policy === 'guide-only') throw new EngineError('FILE_UNSUPPORTED', 'Unsupported draft profile.');
+  if (profile.policy === 'format-only' && options.supplements?.length) throw new EngineError('FILE_INVALID_PACKAGE', 'Supplements are not allowed for this profile.');
+  for (const assignment of options.assignments) {
+    if (!profile.roles.includes(assignment.role) || profile.documentType === 'summary' && assignment.role !== 'summary') throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid draft role.');
+  }
+  for (const supplement of options.supplements ?? []) if (!profile.roles.includes(supplement.role)) throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid draft supplement role.');
+  if (options.summaryParagraphIds !== undefined) {
+    if (profile.documentType !== 'summary' || profile.policy === 'format-only'
+      || options.summaryParagraphIds.some((id) => !options.assignments.some((assignment) => assignment.paragraphId === id))) throw new EngineError('FILE_INVALID_PACKAGE', 'Invalid summary selection.');
+  }
+  const recommendation = recommendDraft(inspection, options.kind, options);
   if (!recommendation.eligible) throw new EngineError('FILE_UNSUPPORTED', 'Unsupported draft source.');
   if (options.assignments.length !== recommendation.paragraphs.length) throw new EngineError('FILE_INVALID_PACKAGE', 'Incomplete draft assignments.');
   const source = new Map(recommendation.paragraphs.map((paragraph) => [paragraph.paragraphId, paragraph.text]));

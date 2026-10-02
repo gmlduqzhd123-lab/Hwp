@@ -6,8 +6,11 @@ import type { PreflightReport } from './domain/preflight';
 import type { DocumentInspection } from './domain/document';
 import DocumentInspector from './features/DocumentInspector';
 import ResearchDraftPanel from './features/ResearchDraftPanel';
-import type { ResearchDraftOptions, ResearchDraftResult } from './domain/research';
-import { PROTOCOL_VERSION } from './workers/protocol';
+import CompetitionCatalogOverview from './features/CompetitionCatalogOverview';
+import { isResearchDraftOptions, type ResearchDraftOptions, type ResearchDraftResult } from './domain/research';
+import { getEffectiveDraftProfile } from './domain/competitions';
+import type { DraftProfile } from './domain/competition-types';
+import { isDraftResponseResult, PROTOCOL_VERSION } from './workers/protocol';
 import type { WorkerRequest, WorkerResponse } from './workers/protocol';
 import InlineDocumentWorker from './workers/document.worker.ts?worker&inline';
 import exampleUrl from '../tests/fixtures/01-plain-text.hwpx?url&inline';
@@ -96,7 +99,8 @@ function App() {
   const [draftResult, setDraftResult] = useState<ResearchDraftResult | null>(null);
   const [draftError, setDraftError] = useState<string | null>(null);
   const draftResultRef = useRef<ResearchDraftResult | null>(null);
-  const draftPendingRef = useRef<{ jobId: string; sourceJobId: string } | null>(null);
+  const draftPendingRef = useRef<{ jobId: string; sourceJobId: string; profileId: string; profileYear: number; profileVersion: string;
+    kind: ResearchDraftOptions['kind']; sourceCount: number; includedCount: number; addedCount: number; selection: 'all' | 'summary-selection' } | null>(null);
   const workerRef = useRef<Worker | null>(null);
   const acceptedRef = useRef<LocalDocument | null>(null);
   const pendingRef = useRef<PendingDocument | null>(null);
@@ -226,6 +230,19 @@ function App() {
         if (draftPending && response.jobId === draftPending.jobId) {
           if (acceptedRef.current?.jobId !== draftPending.sourceJobId) { discardDraft(); return; }
           if (response.type === 'DRAFT_READY') {
+            if (!isDraftResponseResult(response.result) || response.result.kind !== draftPending.kind
+              || response.result.profileId !== draftPending.profileId || response.result.profileYear !== draftPending.profileYear
+              || response.result.profileVersion !== draftPending.profileVersion || response.result.sourceParagraphCount !== draftPending.sourceCount
+              || response.result.includedParagraphCount !== draftPending.includedCount
+              || response.result.excludedParagraphCount !== draftPending.sourceCount - draftPending.includedCount
+              || response.result.addedParagraphCount !== draftPending.addedCount || response.result.sourceSelection !== draftPending.selection) {
+              discardDraft();
+              draftPendingRef.current = null;
+              activeRequestRef.current = false;
+              setPhase('idle');
+              setDraftError('생성 결과가 검토한 대회·기준·문단 선택과 일치하지 않습니다. 원본은 유지되며 다시 생성해야 합니다.');
+              return;
+            }
             const result = { ...response.result, bytes: new Uint8Array(response.result.bytes) };
             draftResultRef.current = result;
             setDraftResult(result);
@@ -472,8 +489,21 @@ function App() {
     const worker = workerRef.current;
     if (!accepted || !worker || !canSelect || activeRequestRef.current) return;
     invalidateDraft();
+    if (!isResearchDraftOptions(options)) {
+      setDraftError('입력한 서식과 문단 선택을 확인해 주세요.');
+      return;
+    }
+    let profile: DraftProfile;
+    try { profile = getEffectiveDraftProfile(options); }
+    catch {
+      setDraftError('선택한 대회·연도·작성 단계에서는 초안을 만들 수 없습니다. 공식 안내와 지원 범위를 확인해 주세요.');
+      return;
+    }
     const jobId = `draft_${++jobCounter.current}`;
-    draftPendingRef.current = { jobId, sourceJobId: accepted.jobId };
+    draftPendingRef.current = { jobId, sourceJobId: accepted.jobId, profileId: profile.id, profileYear: profile.year,
+      profileVersion: profile.version, kind: options.kind, sourceCount: options.assignments.length,
+      includedCount: options.summaryParagraphIds?.length ?? options.assignments.length, addedCount: options.supplements?.length ?? 0,
+      selection: options.summaryParagraphIds ? 'summary-selection' : 'all' };
     activeRequestRef.current = true;
     setPhase('drafting');
     const copy = accepted.bytes.slice().buffer;
@@ -497,7 +527,9 @@ function App() {
     const url = URL.createObjectURL(new Blob([result.bytes.slice().buffer], { type: 'application/hwp+zip' }));
     const anchor = window.document.createElement('a');
     anchor.href = url;
-    anchor.download = result.kind === 'competition' ? '수업혁신사례연구대회_작성초안.hwpx' : '논문_작성초안.hwpx';
+    anchor.download = result.kind === 'paper' ? '논문_작성초안.hwpx' : result.profileId === 'innovation-report'
+      ? '수업혁신사례연구대회_작성초안.hwpx'
+      : `${result.profileYear}_${(result.profileLabel ?? '연구대회').replace(/[<>:"/\\|?*\u0000-\u001f\u007f]/gu, '_').replace(/^[. ]+|[. ]+$/gu, '').slice(0, 100)}_작성초안.hwpx`;
     window.document.body.append(anchor);
     anchor.click();
     anchor.remove();
@@ -563,7 +595,7 @@ function App() {
         </div>}
         {route === 'workspace' && document && <DocumentInspector key={document.jobId} inspection={document.inspection} />}
 
-        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">HWPX를 검사하고 줄글을 보고서·논문 구성으로 분류해 별도의 작성 초안을 만드는 시험판입니다. HWP 파일은 한글에서 HWPX로 저장한 뒤 선택해 주세요.</p><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>선언 순서에 따른 문단·표 내용과 글꼴·크기·문단 서식 참조 탐색</li><li>병합·중첩 표와 확인할 수 없는 서식의 사유 확인</li><li>원문 문단의 자동 분류·배치 검토와 보고서·논문 HWPX 초안 생성</li><li>생성한 초안의 파일 구조·원문 텍스트 보존 재검사</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>업로드 원본의 자동 교정, 표·그림·각주가 포함된 초안 생성</li><li>원문에 없는 연구 결과 작성, 전국대회 최종 제출 적합성 인증</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서를 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
+        {route === 'help' && <section className="help-content"><p className="eyebrow">사용 전 확인</p><h1 ref={headingRef} tabIndex={-1}>지원 범위와 처리 방식</h1><p className="help-lead">HWPX를 검사하고 대회·연도·분과에 맞는 별도의 작성 초안을 만드는 시험판입니다. 요약서는 직접 선택한 문단, 작성 보조는 직접 입력한 내용만 사용합니다. HWP 파일은 한글에서 HWPX로 저장한 뒤 선택해 주세요.</p><CompetitionCatalogOverview /><div className="help-grid"><article className="panel"><h2>현재 할 수 있는 작업</h2><ul><li>25 MB 이하 HWPX 한 개 선택 또는 드래그 앤 드롭</li><li>ZIP 구조·XML 안전성·자원 한도 사전 검사</li><li>실제 패키지 항목·XML·구역 수와 형식 버전 확인</li><li>선언 순서에 따른 문단·표 내용과 글꼴·크기·문단 서식 참조 탐색</li><li>병합·중첩 표와 확인할 수 없는 서식의 사유 확인</li><li>대회별 보고서·요약서·계획서·설명서와 사용자 참고 서식 선택</li><li>문단 배치·선택·직접 작성한 보충 내용 검토와 HWPX 초안 생성</li><li>생성한 파일 구조·포함한 원문 및 보충 텍스트 재검사</li><li>검사한 입력 바이트와 동일한 HWPX 사본 다운로드</li></ul></article><article className="panel"><h2>아직 제공하지 않는 작업</h2><ul><li>HWP·PDF 변환, 암호화 파일 처리</li><li>업로드 원본의 자동 교정, 표·그림·각주가 포함된 초안 생성</li><li>원문에 없는 연구 결과 작성, 전국대회 최종 제출 적합성 인증</li><li>문서 미리보기와 실제 한글 쪽 배치 검증</li><li>새로고침 뒤 문서 복원, 오프라인 재접속</li></ul></article></div><article className="privacy-help panel"><h2>문서 데이터는 열린 화면에만 남습니다</h2><p>앱과 예시·Worker를 준비한 뒤에는 파일 검사와 다운로드에 네트워크가 필요하지 않습니다. 선택한 문서와 직접 입력한 보충 내용을 외부로 전송하거나 지속 저장소에 기록하지 않습니다.</p><p>‘작업 종료’는 화면의 문서 데이터를 비웁니다. 새로고침하거나 탭을 닫으면 작업이 끝나므로 필요한 사본을 먼저 내려받아 주세요. 다운로드 요청은 실제 저장·한글 검수 확인과 구분됩니다.</p></article><a className="button secondary" href={document ? '#/workspace' : '#/start'}>{document ? '작업 문서로 돌아가기' : '시작 화면으로 돌아가기'}</a></section>}
       </main>
       <footer className="site-footer"><span>한글 마감실</span><p>원본은 그대로, 확인한 범위만 안내합니다.</p><span data-build-commit={__BUILD_COMMIT__} title={`빌드 ${__BUILD_COMMIT__}`}>빌드 {__BUILD_COMMIT__ === 'development' ? '개발' : __BUILD_COMMIT__.slice(0, 7)}</span><a href="#/help">지원 범위 및 개인정보</a></footer>
     </div>

@@ -1,0 +1,37 @@
+.competition-catalog-overview { margin-top: 28px; }
+.competition-catalog-overview > .eyebrow { margin-bottom: 11px; }
+.competition-catalog-overview > h2 { font-size: 25px; letter-spacing: -.7px; }
+.catalog-introduction,.catalog-final-note { font-size: 13px; color: var(--muted); line-height: 1.9; margin-top: 16px; word-break: keep-all; }
+.catalog-search-toolbar { display: flex; gap: 17px; align-items: end; margin: 23px 0 17px; }
+.catalog-search-toolbar label { min-width: 0; width: 170px; font-size: 12px; color: #627657; line-height: 1.8; }
+.catalog-search-toolbar .catalog-search-field { flex: 1; }
+.catalog-search-toolbar input,.catalog-search-toolbar select { width: 100%; display: block; min-height: 42px; padding: 9px 11px; font: inherit; font-size: 14px; color: #3d5433; border: 1px solid #cdd9c5; border-radius: 6px; background: white; margin-top: 6px; }
+.catalog-search-toolbar select:focus-visible { outline: 3px solid var(--orange); outline-offset: 4px; }
+.catalog-range { color: #6c805d; font-size: 12px; line-height: 1.8; margin-bottom: 17px; }
+.catalog-competition-list { display: grid; gap: 19px; }
+.catalog-competition-card { min-width: 0; border: 1px solid #d7e1cd; padding: 21px; border-radius: 8px; background: #fcfdf9; }
+.catalog-card-heading { display: flex; gap: 15px; align-items: start; justify-content: space-between; }
+.catalog-card-heading h3 { font-size: 18px; line-height: 1.6; color: #3f5a32; }
+.catalog-card-heading > span { color: #956f43; background: #f7f0e3; border: 1px solid #e7dcc7; border-radius: 4px; font-size: 10px; line-height: 1.7; padding: 4px 7px; flex-shrink: 0; }
+.catalog-organizer { font-size: 12px; line-height: 1.8; color: #667f56; margin-top: 10px; }
+.catalog-aliases { font-size: 11px; line-height: 1.9; color: #7a8e6a; margin-top: 6px; }
+.catalog-eligibility,.catalog-preparation { color: #647956; font-size: 12px; line-height: 1.9; padding-left: 18px; margin: 13px 0; }
+.catalog-sources { display: grid; gap: 13px; background: #f0f5e9; border-radius: 6px; padding: 14px 16px; margin: 17px 0; }
+.catalog-sources strong { display: block; color: #577245; font-size: 12px; line-height: 1.8; }
+.catalog-sources a { display: inline-block; margin-top: 5px; color: #3d6232; font-size: 12px; line-height: 1.9; text-underline-offset: 4px; overflow-wrap: anywhere; }
+.catalog-sources p { margin-top: 5px; font-size: 11px; line-height: 1.8; color: #7a8e68; }
+.catalog-profile-details { border-top: 1px solid #dce5d3; padding-top: 12px; }
+.catalog-profile-details summary { cursor: pointer; font-size: 13px; color: #4f6c3e; line-height: 1.8; padding: 6px 0; }
+.catalog-profile-details h4 { font-size: 13px; color: #566e44; margin: 20px 0 10px; }
+.catalog-profile-scroll { overflow-x: auto; margin-top: 13px; border: 1px solid #dce5d3; border-radius: 6px; }
+.catalog-profile-scroll:focus-visible { outline: 3px solid var(--orange); outline-offset: 4px; }
+.catalog-profile-scroll table { border-collapse: collapse; width: 100%; min-width: 560px; font-size: 12px; text-align: left; }
+.catalog-profile-scroll caption { color: #6b815c; padding: 11px 13px; background: #f1f5e9; text-align: left; font-size: 11px; }
+.catalog-profile-scroll th,.catalog-profile-scroll td { padding: 12px 13px; vertical-align: top; line-height: 1.8; border-top: 1px solid #dce5d3; }
+.catalog-profile-scroll th { font-weight: 600; width: 25%; background: #f7faf2; color: #536e43; }
+.catalog-profile-scroll td { color: #6a805a; }
+.catalog-profile-scroll small { display: block; margin-top: 6px; color: #7e916d; font-size: 10px; }
+.catalog-profile-scroll ul { padding-left: 16px; margin: 0; }
+.catalog-empty { padding: 19px; background: #f5f7ef; border-radius: 6px; color: #6d7f60; font-size: 13px; line-height: 1.8; }
+.catalog-final-note { border-top: 1px solid var(--line); padding-top: 20px; margin-top: 23px; font-size: 12px; }
+@media(max-width:680px) { .competition-catalog-overview { padding: 22px 17px; } .competition-catalog-overview > h2 { font-size: 22px; } .catalog-search-toolbar { flex-direction: column; align-items: stretch; gap: 13px; } .catalog-search-toolbar label { width: 100%; } .catalog-competition-card { padding: 17px 15px; } .catalog-card-heading { flex-direction: column; gap: 8px; } .catalog-card-heading h3 { font-size: 17px; } }

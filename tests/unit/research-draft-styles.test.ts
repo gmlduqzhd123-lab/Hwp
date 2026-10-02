@@ -2,8 +2,7 @@ import { unzipSync } from 'fflate';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import { FONT_LANGUAGES, type SourceSpan } from '../../src/domain/document';
 import type { DraftPage } from '../../src/domain/research';
-import { OFFICIAL_PROFILE, PAPER_PAGE } from '../../src/engine/draft/plan';
-import { createDraftHeader, type DraftStyleRole } from '../../src/engine/draft/styles';
+import { createDraftHeader, type DraftStyleName, type DraftStyleRole } from '../../src/engine/draft/styles';
 import { getBlankTemplateBytes } from '../../src/engine/draft/template';
 import { createFormatResolver } from '../../src/engine/inspection/formats';
 import { INSPECTION_NAMESPACES as NS } from '../../src/engine/inspection/nodes';
@@ -12,6 +11,12 @@ import { attributeValue, elementChildren, indexXml, type XmlIndex, type XmlIndex
 let header: Uint8Array;
 const path = 'Contents/header.xml';
 const referenceSpan: SourceSpan = { entryPath: 'Contents/section0.xml', startByte: 0, endByte: 10 };
+// Fixed synthetic parameters keep this unit suite independent of catalog policy.
+const SYNTHETIC_PAGE: DraftPage = {
+  fontFace: '휴먼명조', fontSizePt: 12, lineSpacingPercent: 160, width: 59528, height: 84188,
+  margins: { top: 4252, bottom: 4252, left: 7087, right: 7087, header: 4252, footer: 4252, gutter: 2835 },
+  indent: 1000, beforeSpacing: 500, afterSpacing: 0,
+};
 
 beforeAll(() => {
   // The licensed public blank is a development template, never a user input.
@@ -27,7 +32,7 @@ function text(bytes: Uint8Array, node: XmlIndexedElement): string {
 function ref(ids: { charPrId: string; paraPrId: string; styleId: string }): XmlIndexedElement {
   return indexXml(new TextEncoder().encode(`<hp:p xmlns:hp="${NS.paragraph}" charPrIDRef="${ids.charPrId}" paraPrIDRef="${ids.paraPrId}" styleIDRef="${ids.styleId}"/>`)).root;
 }
-function page(): DraftPage { return structuredClone(OFFICIAL_PROFILE.page); }
+function page(): DraftPage { return structuredClone(SYNTHETIC_PAGE); }
 
 describe('public-blank research draft style generation', () => {
   it('creates five complete role definitions and consistent language font references', () => {
@@ -115,7 +120,7 @@ describe('public-blank research draft style generation', () => {
   });
 
   it('applies the paper profile and representable fractional point sizes deterministically', () => {
-    const profile = { ...PAPER_PAGE, fontSizePt: 11.25, indent: -250, lineSpacingPercent: 175, beforeSpacing: 0 };
+    const profile = { ...page(), fontFace: '함초롬바탕', fontSizePt: 11.25, indent: -250, lineSpacingPercent: 175, beforeSpacing: 0 };
     const first = createDraftHeader(header, profile);
     const second = createDraftHeader(header, profile);
     expect(first.bytes).toEqual(second.bytes);
@@ -145,6 +150,63 @@ describe('public-blank research draft style generation', () => {
   it('stores decimal hundredths as exact HWPUNIT integers despite binary rounding noise', () => {
     const result = createDraftHeader(header, { ...page(), fontSizePt: 11.23 });
     expect(find(indexXml(result.bytes), 'charPr', result.styles.body.charPrId).attributes.height).toBe('1123');
+  });
+
+  it('uses every explicit role size, including a separate references style', () => {
+    const profile = { ...page(), fontSizes: { title: 18, heading: 13, cover: 10, toc: 11, references: 9.5 } };
+    const result = createDraftHeader(header, profile);
+    const index = indexXml(result.bytes);
+    const resolver = createFormatResolver({ path, index });
+    expect(Object.keys(result.styles)).toEqual(['body', 'title', 'heading', 'cover', 'toc', 'references']);
+    const expected: Record<DraftStyleName, number> = { body: 12, ...profile.fontSizes };
+    for (const role of Object.keys(expected) as DraftStyleName[]) {
+      const ids = result.styles[role]!;
+      const character = resolver.resolveCharacter(ref(ids), referenceSpan);
+      const paragraph = resolver.resolveParagraph(ref(ids), referenceSpan);
+      expect(character.fontSize).toMatchObject({ value: expected[role], rawValue: String(expected[role] * 100), unit: 'pt' });
+      for (const language of FONT_LANGUAGES) expect(character.fonts[language].value).toBe(profile.fontFace);
+      expect(character.reasons).toEqual([]);
+      expect(paragraph.reasons).toEqual([]);
+      expect(paragraph.alignment.value).toBe(role === 'body' || role === 'references' ? 'JUSTIFY' : role === 'title' ? 'CENTER' : 'LEFT');
+      expect(paragraph.indent.value).toBe(role === 'body' || role === 'references' ? 10 : 0);
+      expect(find(index, 'style', ids.styleId).attributes).toMatchObject({
+        charPrIDRef: ids.charPrId, paraPrIDRef: ids.paraPrId, nextStyleIDRef: result.styles.body.styleId,
+      });
+    }
+    for (const [local, count] of Object.entries({ charProperties: 13, paraProperties: 22, styles: 24 })) {
+      const container = index.elements.find((node) => node.uri === NS.head && node.local === local)!;
+      expect(container.attributes.itemCnt).toBe(String(count));
+      expect(elementChildren(container)).toHaveLength(count);
+    }
+  });
+
+  it('keeps the existing five styles and exact output when no role size is specified', () => {
+    const legacy = createDraftHeader(header, page());
+    const empty = createDraftHeader(header, { ...page(), fontSizes: {} });
+    const absentValues = createDraftHeader(header, { ...page(), fontSizes: { title: undefined, references: undefined } });
+    expect(empty.bytes).toEqual(legacy.bytes);
+    expect(absentValues.bytes).toEqual(legacy.bytes);
+    expect(empty.styles).toEqual(legacy.styles);
+    expect(empty.styles.references).toBeUndefined();
+  });
+
+  it('changes a partial override while preserving the remaining legacy role sizes', () => {
+    const result = createDraftHeader(header, { ...page(), fontSizePt: 11.23, fontSizes: { title: 20.25 } });
+    const resolver = createFormatResolver({ path, index: indexXml(result.bytes) });
+    expect(Object.keys(result.styles)).toHaveLength(5);
+    const expected = { body: 11.23, title: 20.25, heading: 11.23, cover: 12, toc: 12 };
+    for (const role of Object.keys(expected) as DraftStyleRole[]) {
+      expect(resolver.resolveCharacter(ref(result.styles[role]), referenceSpan).fontSize.value).toBe(expected[role]);
+    }
+  });
+
+  it.each([
+    { title: Number.NaN }, { heading: -1 }, { cover: 5.99 }, { toc: 72.01 }, { references: 9.005 },
+  ])('rejects invalid role sizes %j without changing the template', (fontSizes) => {
+    const snapshot = new Uint8Array(header);
+    expect(() => createDraftHeader(header, { ...page(), fontSizes }))
+      .toThrowError(expect.objectContaining({ code: 'FILE_INVALID_PACKAGE' }));
+    expect(header).toEqual(snapshot);
   });
 
   it('does not perform a network request', () => {
