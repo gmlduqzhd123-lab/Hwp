@@ -1,5 +1,5 @@
 import { SaxesParser } from 'saxes';
-import { EngineError } from '../../domain/errors';
+import { EngineError, type XmlUnsupportedReason } from '../../domain/errors';
 import { RESOURCE_LIMITS, type ResourceLimits } from '../../domain/limits';
 
 export interface XmlElement {
@@ -19,6 +19,11 @@ export interface XmlDocument {
 }
 
 const XMLNS_URI = 'http://www.w3.org/2000/xmlns/';
+const XSI_URI = 'http://www.w3.org/2001/XMLSchema-instance';
+const RDF_URI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#';
+// Hancom's public model uses the slash form; the OPF standard uses the other.
+// These are explicit supported names, never prefix or arbitrary URI normalization.
+const OPF_URIS = new Set(['http://www.idpf.org/2007/opf', 'http://www.idpf.org/2007/opf/']);
 const ACTIVE_ELEMENTS = new Set(['script', 'iframe', 'object', 'embed', 'applet', 'ole']);
 const INVALID_MESSAGE = 'XML 구조가 올바르지 않습니다. 원본은 변경되지 않았습니다.';
 const UNSUPPORTED_MESSAGE = '안전하게 검사할 수 없는 XML 구조입니다. 원본은 변경되지 않았습니다.';
@@ -28,8 +33,8 @@ function invalid(): never {
   throw new EngineError('FILE_INVALID_PACKAGE', INVALID_MESSAGE);
 }
 
-function unsupported(): never {
-  throw new EngineError('XML_UNSUPPORTED', UNSUPPORTED_MESSAGE);
+function unsupported(reason: XmlUnsupportedReason): never {
+  throw new EngineError('XML_UNSUPPORTED', UNSUPPORTED_MESSAGE, reason);
 }
 
 function checkLength(length: number, maximum: number): void {
@@ -71,7 +76,7 @@ function checkTokens(source: string, maximum: number): void {
       continue;
     }
 
-    if (/^<!\s*(?:DOCTYPE|ENTITY)\b/i.test(source.slice(position, position + 32))) unsupported();
+    if (/^<!\s*(?:DOCTYPE|ENTITY)\b/i.test(source.slice(position, position + 32))) unsupported('DTD');
 
     position += 1;
     let tokenStart = position;
@@ -107,6 +112,35 @@ function hasExternalReference(value: string): boolean {
   return /(?:https?|ftp|file|javascript|data|vbscript):/i.test(compact) || /^[\\/]{2}/u.test(compact);
 }
 
+interface ExpandedName {
+  uri: string;
+  local: string;
+}
+
+/**
+ * These exact XML metadata roles describe values; this reader never resolves
+ * schema hints, dereferences RDF identifiers, renders markup or fetches URLs.
+ * Other attributes, including resource href/src/path, keep their rejection rule.
+ */
+function isInertMetadataAttribute(
+  tag: ExpandedName,
+  attribute: ExpandedName,
+  parent: XmlElement | undefined,
+  root: XmlElement | undefined,
+): boolean {
+  if (attribute.uri === XSI_URI
+    && (attribute.local === 'schemaLocation' || attribute.local === 'noNamespaceSchemaLocation')) return true;
+
+  if (OPF_URIS.has(tag.uri) && tag.local === 'meta'
+    && parent?.uri === tag.uri && parent.local === 'metadata'
+    && attribute.uri === '' && attribute.local === 'content') return true;
+
+  if (root?.uri !== RDF_URI || root.local !== 'RDF' || tag.uri !== RDF_URI || attribute.uri !== RDF_URI) return false;
+  if (tag.local === 'Description' && attribute.local === 'about') return true;
+  return tag.local === 'type' && attribute.local === 'resource'
+    && parent?.uri === RDF_URI && parent.local === 'Description';
+}
+
 /**
  * Validate immutable UTF-8 bytes and collect bounded, namespace-aware metadata.
  * There is no XML serializer or writer. Saxes positions are character offsets;
@@ -131,7 +165,7 @@ export function validateXml(
     // original, while rejecting malformed and non-UTF-8 input without replacement.
     source = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
   } catch {
-    unsupported();
+    unsupported('ENCODING');
   }
   checkTokens(source, limits.maxXmlTextLength);
 
@@ -142,12 +176,12 @@ export function validateXml(
   let textLength = 0;
 
   parser.on('error', () => invalid());
-  parser.on('doctype', () => unsupported());
+  parser.on('doctype', () => unsupported('DTD'));
   parser.on('xmldecl', (declaration) => {
-    if (declaration.encoding && declaration.encoding.toLowerCase() !== 'utf-8') unsupported();
-    if (declaration.version !== '1.0') unsupported();
+    if (declaration.encoding && declaration.encoding.toLowerCase() !== 'utf-8') unsupported('ENCODING');
+    if (declaration.version !== '1.0') unsupported('XML_VERSION');
   });
-  parser.on('processinginstruction', () => unsupported());
+  parser.on('processinginstruction', () => unsupported('PROCESSING_INSTRUCTION'));
   parser.on('opentagstart', (tag) => {
     attributeCount = 0;
     checkLength(tag.name.length, limits.maxXmlTextLength);
@@ -163,14 +197,16 @@ export function validateXml(
     // the declared namespace identity, so reject it instead of accepting a
     // whitespace-disguised trusted HWPX namespace.
     if ((attribute.name === 'xmlns' || attribute.prefix === 'xmlns')
-      && attribute.value !== attribute.value.trim()) unsupported();
+      && attribute.value !== attribute.value.trim()) unsupported('NAMESPACE');
   });
   parser.on('opentag', (tag) => {
-    if (ACTIVE_ELEMENTS.has(tag.local.toLowerCase())) unsupported();
+    if (ACTIVE_ELEMENTS.has(tag.local.toLowerCase())) unsupported('ACTIVE_CONTENT');
     const attributes: Record<string, string> = Object.create(null) as Record<string, string>;
     for (const attribute of Object.values(tag.attributes)) {
       if (attribute.uri === XMLNS_URI || attribute.name === 'xmlns' || attribute.prefix === 'xmlns') continue;
-      if (/^on[a-z]+$/i.test(attribute.local) || hasExternalReference(attribute.value)) unsupported();
+      if (/^on[a-z]+$/i.test(attribute.local)) unsupported('EVENT_ATTRIBUTE');
+      if (hasExternalReference(attribute.value)
+        && !isInertMetadataAttribute(tag, attribute, stack.at(-1), elements[0])) unsupported('EXTERNAL_REFERENCE');
       const key = attribute.uri === '' ? attribute.local : attribute.name;
       attributes[key] = attribute.value;
     }

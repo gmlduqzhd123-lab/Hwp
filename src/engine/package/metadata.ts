@@ -1,5 +1,5 @@
 import { RESOURCE_LIMITS, type ResourceLimits } from '../../domain/limits';
-import { assertSafePath, normalizedPathKey } from './paths';
+import { assertSafePath, isXmlPath, normalizedPathKey } from './paths';
 import { encryptedPackage, invalidPackage, resourceLimit, unsupportedFile } from './errors';
 
 export interface ZipEntryMetadata {
@@ -111,7 +111,7 @@ export function scanZipMetadata(bytes: Uint8Array, limits: Readonly<ResourceLimi
     checkExtra(cursor + 46 + nameLength, extraLength);
     declaredTotal += uncompressedSize;
     if (declaredTotal > limits.maxUncompressedBytes) resourceLimit();
-    if (/\.(?:xml|hpf|opf)$/iu.test(name) && uncompressedSize > limits.maxXmlBytes) resourceLimit();
+    if (isXmlPath(name) && uncompressedSize > limits.maxXmlBytes) resourceLimit();
     const directory = name.endsWith('/');
     // Directory markers are never decompressed, so only canonical empty STORED
     // markers can pass. A method-8 marker with zero input is not a valid stream.

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent as ReactDragEvent } from 'react';
-import type { ErrorCode } from './domain/errors';
+import { ERROR_MESSAGES, getErrorMessage, isErrorCode, type ErrorCode } from './domain/errors';
 import { RESOURCE_LIMITS } from './domain/limits';
 import type { PreflightReport } from './domain/preflight';
 import { PROTOCOL_VERSION } from './workers/protocol';
@@ -31,15 +31,6 @@ interface Notice {
   code: ErrorCode;
   message: string;
 }
-
-const ERROR_MESSAGES: Record<ErrorCode, string> = {
-  FILE_UNSUPPORTED: '현재 지원 범위의 HWPX 파일만 검사할 수 있습니다. HWP·PDF 변환과 실행 가능 개체는 지원하지 않습니다.',
-  FILE_INVALID_PACKAGE: 'HWPX 파일 구조를 확인하지 못했습니다. 손상되었거나 지원하지 않는 패키지입니다.',
-  FILE_ENCRYPTED: '암호화된 파일은 검사할 수 없습니다. 암호를 해제한 HWPX를 선택해 주세요.',
-  RESOURCE_LIMIT: '파일 또는 내부 데이터가 검사 한도를 넘었습니다. 더 작은 HWPX를 선택해 주세요.',
-  XML_UNSUPPORTED: '안전하게 해석할 수 없는 XML 구조입니다. 이 파일의 검사를 중단했습니다.',
-  WORKER_FAILED: '검사 기능을 준비하지 못했습니다. 준비를 다시 시도해 주세요.',
-};
 
 function initialLocation(): { route: Route; notice: string | null } {
   if (window.location.hash === '#/help') return { route: 'help', notice: null };
@@ -225,8 +216,8 @@ function App() {
           pendingRef.current = null;
           activeRequestRef.current = false;
           setPhase('idle');
-          const code = Object.hasOwn(ERROR_MESSAGES, response.code) ? response.code : 'FILE_INVALID_PACKAGE';
-          setError({ code, message: ERROR_MESSAGES[code] });
+          const code = isErrorCode(response.code) ? response.code : 'FILE_INVALID_PACKAGE';
+          setError({ code, message: getErrorMessage(code, response.xmlReason) });
         }
       };
       worker.onerror = (event) => {
@@ -454,7 +445,7 @@ function App() {
       <main id="main" tabIndex={-1} className={`main-content ${route === 'workspace' ? 'workspace-content' : ''}`}>
         <div className="status-line" role="status" aria-live="polite"><span className={`status-dot ${readiness}`} aria-hidden="true" />{readinessText}<span className="status-divider" aria-hidden="true">·</span><span>문서는 이 브라우저 안에서 처리합니다</span></div>
         {routeNotice && <p className="notice" role="status">{routeNotice}</p>}
-        {error && <div className="error-notice" role="alert"><strong>{error.message}</strong><span>오류 코드: {error.code}. {document ? '이전에 확인한 문서는 그대로 보관 중입니다.' : '원본 파일은 변경되지 않았습니다.'}</span></div>}
+        {error && <div className="error-notice" role="alert"><strong>{error.message}</strong><span>오류 코드: {error.code}. {document ? '이번 파일의 검사는 완료되지 않았습니다. 이전에 확인한 문서는 작업 화면에 그대로 보관 중입니다.' : '원본 파일은 변경되지 않았습니다.'}</span></div>}
         {readiness === 'failed' && <div className="recovery-actions"><button className="button secondary" onClick={() => { setError(null); setReadiness('preparing'); setRestart((value) => value + 1); }}>준비 다시 시도</button><a href="#/help">도움말 보기</a></div>}
         {busy && <div className="processing" role="status"><span className="spinner" aria-hidden="true" /><div><strong>{phase === 'reading' ? '파일을 메모리에서 읽고 있습니다' : 'HWPX 패키지와 XML을 검사하고 있습니다'}</strong><p>진행 중에는 새 파일을 선택할 수 없습니다.</p></div><button className="button secondary" onClick={cancel}>검사 취소</button></div>}
 

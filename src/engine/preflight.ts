@@ -3,7 +3,8 @@ import { EngineError } from '../domain/errors';
 import { RESOURCE_LIMITS, type ResourceLimits } from '../domain/limits';
 import type { PreflightReport } from '../domain/preflight';
 import { invalidPackage, resourceLimit, unsupportedFile } from './package/errors';
-import { inspectPackageIdentity, PACKAGE_NAMESPACES, type XmlSummary } from './package/identity';
+import { inspectPackageIdentity, isOpfNamespace, PACKAGE_NAMESPACES, type XmlSummary } from './package/identity';
+import { isXmlPath } from './package/paths';
 import { scanZipMetadata, validateLimits } from './package/metadata';
 import { validateXml } from './xml/validate';
 
@@ -43,7 +44,7 @@ export async function preflight(input: Uint8Array, fileName: string, inputLimits
       if (!entry || !expected) invalidPackage();
       if (entry.filename !== expected.name || entry.directory !== expected.directory || entry.compressedSize !== expected.compressedSize || entry.uncompressedSize !== expected.uncompressedSize || entry.offset !== expected.localOffset || entry.compressionMethod !== expected.method || entry.rawBitFlag !== expected.flags || entry.signature !== expected.crc32 || entry.encrypted || entry.symlink) invalidPackage();
       if (entry.directory) continue;
-      const isXml = /\.(?:xml|hpf|opf)$/iu.test(entry.filename);
+      const isXml = isXmlPath(entry.filename);
       const chunks: Uint8Array[] = [];
       let entryBytes = 0;
       const writer = new WritableStream<Uint8Array>({
@@ -73,7 +74,7 @@ export async function preflight(input: Uint8Array, fileName: string, inputLimits
         if (xmlElements > limits.maxXmlElements) resourceLimit();
         const root = document.elements[0];
         if (!root) invalidPackage();
-        const needsIdentityElements = root.uri === PACKAGE_NAMESPACES.container || root.uri === PACKAGE_NAMESPACES.opf;
+        const needsIdentityElements = root.uri === PACKAGE_NAMESPACES.container || isOpfNamespace(root.uri);
         documents.set(entry.filename, { root, ...(needsIdentityElements ? { identityDocument: document } : {}) });
         xmlCount += 1;
       }

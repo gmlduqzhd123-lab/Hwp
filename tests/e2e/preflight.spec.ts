@@ -2,6 +2,7 @@ import { test, expect, type Dialog, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { unzipSync, zipSync, strToU8 } from 'fflate';
 import { preflight } from '../../src/engine/preflight';
+import { makeHancomPackage } from '../helpers/hancom-package';
 
 const fixturePath = new URL('../fixtures/01-plain-text.hwpx', import.meta.url);
 const fixture = await readFile(fixturePath);
@@ -48,6 +49,26 @@ test('Worker inspection and saved HWPX preserve every input byte and reopen inde
   expect(report.entryCount).toBe(6);
   expect(report.sectionPaths).toEqual(['Contents/section0.xml']);
   await expect(page.getByText('다운로드를 요청했습니다.', { exact: false })).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('documented Hancom package with inert URL metadata works offline through the real Worker', async ({ page, context }) => {
+  const input = Buffer.from(makeHancomPackage(fixture));
+  await ready(page);
+  const requests: string[] = [];
+  const errors: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  page.on('pageerror', (error) => errors.push(error.message));
+  await context.setOffline(true);
+  await select(page, input, '한컴구조_합성.hwpx');
+  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  await expect(page.getByText('5.1.1.0', { exact: true })).toBeVisible();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  const output = await downloadBytes(page);
+  expect(output).toEqual(input);
+  const report = await preflight(new Uint8Array(output), 'download.hwpx');
+  expect(report).toMatchObject({ entryCount: 8, xmlCount: 6, sectionPaths: ['Contents/section0.xml'] });
+  expect(requests).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -124,10 +145,39 @@ test('DTD input cannot trigger external requests or script execution and the UI 
   page.on('request', (request) => requests.push(request.url()));
   await select(page, unsafe, 'unsafe.hwpx');
   await expect(page.getByRole('alert')).toContainText('XML_UNSUPPORTED');
+  await expect(page.getByRole('alert')).toContainText('DTD 선언');
+  await expect(page.getByRole('alert')).toContainText('원본 파일은 변경되지 않았습니다.');
+  await expect(page.getByRole('alert')).not.toContainText('이전에 확인한 문서');
   await expect(page.getByRole('alert')).not.toContainText('PRIVATE_SYNTHETIC_MARKER');
   expect(requests).toEqual([]);
   await select(page);
   await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+});
+
+test('XML failures show the actual reason without document values and permit a subsequent valid file', async ({ page }) => {
+  await ready(page);
+  const requests: string[] = [];
+  page.on('request', (request) => requests.push(request.url()));
+  const scenarios = [
+    { source: '<?xml version="1.1"?><r/>', message: 'XML 버전은 지원하지 않습니다' },
+    { source: '<r href="https://example.invalid/PRIVATE_XML_VALUE"/>', message: '문서 밖의 자원을 참조하는 속성' },
+    { source: '<r onclick="PRIVATE_XML_VALUE()"/>', message: '이벤트 속성' },
+  ];
+  for (const scenario of scenarios) {
+    const entries = unzipSync(fixture);
+    entries['Contents/section0.xml'] = strToU8(scenario.source);
+    await select(page, Buffer.from(zipSync(entries, { level: 0 })), 'PRIVATE_FILENAME.hwpx');
+    const alert = page.getByRole('alert');
+    await expect(alert).toContainText('XML_UNSUPPORTED');
+    await expect(alert).toContainText(scenario.message);
+    await expect(alert).not.toContainText('PRIVATE_XML_VALUE');
+    await expect(alert).not.toContainText('PRIVATE_FILENAME');
+    await expect(alert).not.toContainText('https:');
+  }
+  await select(page);
+  await expect(page.getByRole('heading', { name: '파일 구조를 확인했습니다.' })).toBeVisible();
+  expect(await downloadBytes(page)).toEqual(fixture);
+  expect(requests).toEqual([]);
 });
 
 test('ending or refreshing a workspace removes the document and unknown hashes recover', async ({ page }) => {

@@ -8,6 +8,17 @@ export const PACKAGE_NAMESPACES = Object.freeze({
   version: 'http://www.hancom.co.kr/hwpml/2011/version',
   head: 'http://www.hancom.co.kr/hwpml/2011/head',
   section: 'http://www.hancom.co.kr/hwpml/2011/section',
+  rdf: 'http://www.w3.org/1999/02/22-rdf-syntax-ns#',
+});
+
+export function isOpfNamespace(uri: string): boolean {
+  return uri === PACKAGE_NAMESPACES.opf || uri === 'http://www.idpf.org/2007/opf/';
+}
+
+const AUXILIARY_ROOTFILE_TYPES: Readonly<Record<string, readonly string[]>> = Object.freeze({
+  'Preview/PrvText.txt': ['text/plain', 'text/xml'],
+  'Preview/PrvImage.png': ['image/png'],
+  'META-INF/container.rdf': ['application/rdf+xml'],
 });
 
 export interface XmlSummary {
@@ -42,7 +53,9 @@ function oneChild(parent: XmlElement, elements: readonly XmlElement[], local: st
 export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: ReadonlyMap<string, XmlSummary>): { sectionPaths: string[]; formatVersion: string } {
   const version = documents.get('version.xml');
   if (!rootIs(version, 'HCFVersion', PACKAGE_NAMESPACES.version)) invalidPackage();
-  if (version.root.attributes.targetApplication !== undefined && version.root.attributes.targetApplication !== 'WORDPROCESSOR') invalidPackage();
+  // Hancom's public model also writes the historical spelling "tagetApplication".
+  const applications = [version.root.attributes.targetApplication, version.root.attributes.tagetApplication].filter((value) => value !== undefined);
+  if (applications.some((value) => value !== 'WORDPROCESSOR')) invalidPackage();
   const build = version.root.attributes.buildNumber ?? version.root.attributes.build;
   if (version.root.attributes.buildNumber && version.root.attributes.build && version.root.attributes.buildNumber !== version.root.attributes.build) invalidPackage();
   const versionParts = [...['major', 'minor', 'micro'].map((name) => version.root.attributes[name]), build];
@@ -53,17 +66,33 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
   const containerElements = container.identityDocument.elements;
   if (containerElements.some((element) => element.attributes['xml:base'] !== undefined)) invalidPackage();
   const rootfiles = oneChild(container.root, containerElements, 'rootfiles', PACKAGE_NAMESPACES.container);
-  const rootfile = oneChild(rootfiles, containerElements, 'rootfile', PACKAGE_NAMESPACES.container);
-  if (rootfile.attributes['media-type'] !== undefined && rootfile.attributes['media-type'].toLowerCase() !== 'application/hwpml-package+xml') invalidPackage();
-  const packagePath = assertSafePath(rootfile.attributes['full-path'] ?? '', false);
-  if (!paths.has(packagePath)) invalidPackage();
-  const packageDocument = documents.get(packagePath);
-  if (!rootIs(packageDocument, 'package', PACKAGE_NAMESPACES.opf) || !packageDocument.identityDocument) invalidPackage();
+  let packagePath: string | undefined;
+  let packageDocument: XmlSummary | undefined;
+  const declaredRootPaths = new Set<string>();
+  for (const rootfile of directChildren(rootfiles, containerElements)) {
+    if (rootfile.local !== 'rootfile' || rootfile.uri !== PACKAGE_NAMESPACES.container) invalidPackage();
+    const path = assertSafePath(rootfile.attributes['full-path'] ?? '', false);
+    if (!paths.has(path) || declaredRootPaths.has(path)) invalidPackage();
+    declaredRootPaths.add(path);
+    const mediaType = rootfile.attributes['media-type']?.toLowerCase();
+    const summary = documents.get(path);
+    if (summary?.root.local === 'package' && isOpfNamespace(summary.root.uri)) {
+      if (packagePath !== undefined || (mediaType !== undefined && mediaType !== 'application/hwpml-package+xml')) invalidPackage();
+      packagePath = path;
+      packageDocument = summary;
+    } else {
+      if (!mediaType || !Object.hasOwn(AUXILIARY_ROOTFILE_TYPES, path) || !AUXILIARY_ROOTFILE_TYPES[path]?.includes(mediaType)) invalidPackage();
+      if (path === 'META-INF/container.rdf' && !rootIs(summary, 'RDF', PACKAGE_NAMESPACES.rdf)) invalidPackage();
+    }
+  }
+  if (!packagePath || !packageDocument?.identityDocument) invalidPackage();
   const packageElements = packageDocument.identityDocument.elements;
   if (packageElements.some((element) => element.attributes['xml:base'] !== undefined)) invalidPackage();
-  const manifest = oneChild(packageDocument.root, packageElements, 'manifest', PACKAGE_NAMESPACES.opf);
-  const spine = oneChild(packageDocument.root, packageElements, 'spine', PACKAGE_NAMESPACES.opf);
-  const items = directChildren(manifest, packageElements).filter((element) => element.local === 'item' && element.uri === PACKAGE_NAMESPACES.opf);
+  const opfNamespace = packageDocument.root.uri;
+  if (packageElements.some((element) => isOpfNamespace(element.uri) && element.uri !== opfNamespace)) invalidPackage();
+  const manifest = oneChild(packageDocument.root, packageElements, 'manifest', opfNamespace);
+  const spine = oneChild(packageDocument.root, packageElements, 'spine', opfNamespace);
+  const items = directChildren(manifest, packageElements).filter((element) => element.local === 'item' && element.uri === opfNamespace);
   const itemsById = new Map<string, string>();
   const manifestPaths = new Set<string>();
   const declaredSections = new Set<string>();
@@ -71,7 +100,7 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
   for (const item of items) {
     const id = item.attributes.id;
     if (!id || itemsById.has(id)) invalidPackage();
-    const path = resolvePackageReference(packagePath, item.attributes.href ?? '');
+    const path = resolvePackageReference(packagePath, item.attributes.href ?? '', paths);
     if (!paths.has(path) || manifestPaths.has(path)) invalidPackage();
     itemsById.set(id, path);
     manifestPaths.add(path);
@@ -88,11 +117,16 @@ export function inspectPackageIdentity(paths: ReadonlySet<string>, documents: Re
   }
   if (!header) invalidPackage();
   const sectionPaths: string[] = [];
+  const seenSpinePaths = new Set<string>();
   const seenSections = new Set<string>();
   for (const itemref of directChildren(spine, packageElements)) {
-    if (itemref.local !== 'itemref' || itemref.uri !== PACKAGE_NAMESPACES.opf) invalidPackage();
+    if (itemref.local !== 'itemref' || itemref.uri !== opfNamespace) invalidPackage();
     const path = itemsById.get(itemref.attributes.idref ?? '');
-    if (!path || seenSections.has(path) || !rootIs(documents.get(path), 'sec', PACKAGE_NAMESPACES.section)) invalidPackage();
+    if (!path || seenSpinePaths.has(path)) invalidPackage();
+    seenSpinePaths.add(path);
+    const summary = documents.get(path);
+    if (summary === header) continue;
+    if (!rootIs(summary, 'sec', PACKAGE_NAMESPACES.section)) invalidPackage();
     seenSections.add(path);
     sectionPaths.push(path);
   }
