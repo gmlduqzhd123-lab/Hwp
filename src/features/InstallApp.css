@@ -1,0 +1,17 @@
+.site-header .install-button { min-height: 38px; padding: 7px 14px; gap: 6px; font-size: 13px; background: var(--green); color: #fff; white-space: nowrap; }
+.site-header .install-button:hover { background: #1c3d30; }
+.install-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 16px; color: #253730; box-shadow: 0 24px 64px #1a2a2140; }
+.install-dialog::backdrop { background: #1a2a2199; }
+.install-dialog-body { padding: 24px 22px 20px; line-height: 1.7; font-size: 15px; word-break: keep-all; }
+.install-dialog h2 { font-size: 20px; letter-spacing: -.5px; }
+.install-dialog-sub { font-size: 13px; color: var(--muted); margin: 4px 0 14px; }
+.install-dialog ol { margin: 10px 0 4px; padding-left: 22px; }
+.install-dialog li { margin: 6px 0; }
+.install-dialog-note { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #f0f4ec; color: var(--muted); font-size: 13px; }
+.install-dialog .install-external { display: flex; width: 100%; margin-top: 14px; }
+.install-dialog .install-close { width: 100%; margin-top: 16px; }
+/* 휴대폰: 메뉴 줄 오른쪽 끝에 둔다 */
+@media (max-width: 680px) {
+  .app-shell .site-header nav { flex: 1 1 auto; }
+  .site-header .install-button { order: 4; min-height: 34px; padding: 5px 11px; font-size: 12px; }
+}

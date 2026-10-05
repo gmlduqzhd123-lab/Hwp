@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const repository = fileURLToPath(new URL('../../', import.meta.url));
 const workspaces: string[] = [];
-const csp = "default-src &#39;none&#39;; script-src &#39;self&#39;; style-src &#39;self&#39;; img-src &#39;self&#39; blob: data:; font-src &#39;self&#39;; worker-src &#39;self&#39; blob:; connect-src &#39;none&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;";
+const csp = "default-src &#39;none&#39;; script-src &#39;self&#39;; style-src &#39;self&#39;; img-src &#39;self&#39; blob: data:; font-src &#39;self&#39;; worker-src &#39;self&#39; blob:; manifest-src &#39;self&#39;; connect-src &#39;none&#39;; object-src &#39;none&#39;; base-uri &#39;none&#39;; form-action &#39;none&#39;";
 
 async function workspace() {
   const path = await mkdtemp(join(tmpdir(), 'hwp-build-contract-'));
@@ -104,6 +104,23 @@ describe('the public artifact checks enforce the runtime contract', () => {
     const path = await workspace();
     const html = await readFile(join(path, 'dist/index.html'), 'utf8');
     await writeFile(join(path, 'dist/index.html'), html.replace('script-src &#39;self&#39;', 'script-src * &#39;unsafe-inline&#39;'));
+    expect(check(path, 'check-dist.mjs').status).not.toBe(0);
+  });
+
+  it('accepts only the reviewed app-install manifest and icons', async () => {
+    const path = await workspace();
+    await mkdir(join(path, 'dist/icons'), { recursive: true });
+    await writeFile(join(path, 'dist/manifest.webmanifest'), JSON.stringify({ name: '한글 마감실', start_url: './#/start', icons: [{ src: 'icons/icon-192.png' }] }));
+    for (const name of ['icon-192', 'icon-512', 'icon-maskable-512', 'apple-touch-icon']) await writeFile(join(path, `dist/icons/${name}.png`), 'synthetic png');
+    expect(check(path, 'check-dist.mjs').status).toBe(0);
+    await writeFile(join(path, 'dist/icons/other.png'), 'synthetic png');
+    expect(check(path, 'check-dist.mjs').status).not.toBe(0);
+  });
+
+  it('rejects a production policy without the manifest restriction', async () => {
+    const path = await workspace();
+    const html = await readFile(join(path, 'dist/index.html'), 'utf8');
+    await writeFile(join(path, 'dist/index.html'), html.replace(' manifest-src &#39;self&#39;;', ''));
     expect(check(path, 'check-dist.mjs').status).not.toBe(0);
   });
 
