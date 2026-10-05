@@ -12,6 +12,6 @@
 
 ZIP은 `@zip.js/zip.js/lib/zip-core-native.js`의 번들에 포함된 JavaScript 코덱을 사용한다. 추가 Worker나 WASM을 가져오지 않는다. 빌드된 예시 한 개는 합성 fixture를 data URL로 포함한다. 첫 Worker는 배포된 같은 출처의 파일로 준비하고 재시작은 앱에 사전 포함한 `?worker&inline`의 코드로 Blob Worker를 만든다. 이용자 문서에서 실행 코드를 생성하지 않는다. 코드가 앱과 Worker 파일에 함께 포함되는 빌드 크기 비용을 감수하여 준비 후 종료·취소·재시도에 HTTP 요청을 없앴다.
 
-운영 CSP는 `script-src 'self'`, `worker-src 'self' blob:`, `connect-src 'none'`이며 문서 선택 후 네트워크 요청이나 지속 저장소 사용이 없다. 개발 서버의 HMR·모듈 로딩과 오프라인 새로고침은 운영 오프라인 보장의 범위 밖이다. 소스/정적 검사에서 진입점·공개 파일·실행 자원 URL·키 형태 값·전체 CSP를 확인한다. 정적 검사만으로 임의 JavaScript 동작 전체를 증명하지 않으며 실제 오프라인 브라우저 시험을 함께 수행한다.
+운영 CSP는 `script-src 'self'`, `worker-src 'self' blob:`, `manifest-src 'self'`, `connect-src 'none'`이며 문서 선택 후 네트워크 요청이나 지속 저장소 사용이 없다. 개발 서버의 HMR·모듈 로딩과 오프라인 새로고침은 운영 오프라인 보장의 범위 밖이다. 소스/정적 검사에서 진입점·공개 파일·실행 자원 URL·키 형태 값·전체 CSP를 확인한다. 정적 검사만으로 임의 JavaScript 동작 전체를 증명하지 않으며 실제 오프라인 브라우저 시험을 함께 수행한다.
 
 페이지는 해시 라우팅과 검증된 Vite base를 사용한다. 빌드 기본 경로는 `/Hwp/`이며 임의 중첩 경로 시험도 수행한다. 사용자 지정 경로는 preview·E2E에도 동일하게 적용한다. 중첩 경로 시험은 이전 `dist`를 보존하고 성공·실패 후 복원한다. `dist`는 정적 빌드 산출물이며 직접 편집하지 않는다. `DocumentInspector`는 구역별 문단·표를 제한된 개수로 탐색하고 긴 텍스트·run·셀 목록도 나누어 표시한다. 원문은 React 텍스트로 렌더링하며 문서 글꼴이나 자원을 로드하지 않는다. 한글 페이지 조판 미리보기나 편집기는 제공하지 않는다. Pages workflow는 검증된 main만 배포하고 공개 URL에서 실제 구조 읽기·다운로드·오프라인 동작을 확인한다.

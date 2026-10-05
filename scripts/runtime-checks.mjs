@@ -91,7 +91,7 @@ export function inspectResources(text, extension, path) {
 export function requireProductionPolicy(html) {
   const expected = new Map([
     ['default-src', ["'none'"]], ['script-src', ["'self'"]], ['style-src', ["'self'"]],
-    ['img-src', ["'self'", 'blob:', 'data:']], ['font-src', ["'self'"]], ['worker-src', ["'self'", 'blob:']],
+    ['img-src', ["'self'", 'blob:', 'data:']], ['font-src', ["'self'"]], ['worker-src', ["'self'", 'blob:']], ['manifest-src', ["'self'"]],
     ['connect-src', ["'none'"]], ['object-src', ["'none'"]], ['base-uri', ["'none'"]], ['form-action', ["'none'"]],
   ]);
   const policies = [];
