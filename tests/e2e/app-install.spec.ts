@@ -9,6 +9,9 @@ test('the app manifest loads under the production policy with every reviewed ico
   expect(manifest.url).toMatch(/\/manifest\.webmanifest$/);
   const body = JSON.parse(manifest.data ?? '{}') as { start_url: string; display: string; icons: Array<{ src: string }> };
   expect(body).toMatchObject({ start_url: './#/start', display: 'standalone' });
+  // Apps share the github.io origin, so a relative id like "./" would collapse every app into one identity.
+  const { appId } = await client.send('Page.getAppId') as { appId?: string };
+  expect(appId).toBe(new URL('/Hwp/', manifest.url).href);
   for (const icon of body.icons) {
     const response = await page.request.get(new URL(icon.src, manifest.url).href);
     expect(response.status(), icon.src).toBe(200);
