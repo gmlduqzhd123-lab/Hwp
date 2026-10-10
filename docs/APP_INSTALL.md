@@ -7,10 +7,14 @@
 - 크롬·엣지·삼성 인터넷처럼 설치 창을 띄울 수 있는 브라우저는 `beforeinstallprompt` 신호를 앱이 그려지기 전에 받아 두었다가 바로 설치 창을 연다.
 - 그 밖의 환경은 `src/domain/app-install.ts`가 브라우저 정보(userAgent·platform·터치 지점 수)만으로 아이폰 Safari·카카오톡·인앱 브라우저·안드로이드·PC 안내를 고른다. 카카오톡은 `kakaotalk://web/openExternal`로 같은 주소(해시 제외)를 기본 브라우저에서 다시 연다.
 
+## QR로 접속
+
+상단 `📲 앱 설치` 옆 `📱 QR` 버튼은 교실 TV·전자칠판에 띄울 이 앱 주소의 QR을 보여 준다(`src/features/QrApp.tsx`). QR 그림은 미리 만든 `public/qr.svg`를 같은 출처에서 불러오므로 외부 요청이 없고 문서 데이터와 무관하다.
+
 ## 제약과 보안
 
 - 서비스 워커·캐시·지속 저장소를 사용하지 않는다. 설치 후에도 문서는 지금처럼 열린 화면의 메모리에서만 처리하며 오프라인 재접속은 제공하지 않는다(`check:constraints`의 `navigator.serviceWorker` 금지 유지).
-- 공개 파일은 `manifest.webmanifest`와 `icons/`의 PNG 네 개(192·512·maskable 512·apple-touch 180)만 추가로 허용한다(`check:dist`).
+- 공개 파일은 `manifest.webmanifest`, `qr.svg`, `icons/`의 PNG 네 개(192·512·maskable 512·apple-touch 180)만 추가로 허용한다(`check:dist`).
 - 운영 CSP에 `manifest-src 'self'`만 추가했다. 나머지 지시어는 그대로이며 `requireProductionPolicy`가 전체 정책을 확인한다.
 - 안내 문구와 설치 상태는 문서·파일명·해시와 무관하다.
 

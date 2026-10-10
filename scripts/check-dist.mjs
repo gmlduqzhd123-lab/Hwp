@@ -11,7 +11,7 @@ async function inspect(dir) {
     else {
       const publicPath = relative('dist', path).replace(/\\/g, '/');
       // The reviewed demo is inlined into the app bundle; no standalone documents are public.
-      if (!/^(?:index\.html|THIRD_PARTY_NOTICES\.txt|manifest\.webmanifest|icons\/(?:icon-192|icon-512|icon-maskable-512|apple-touch-icon)\.png|assets\/(?:index|document\.worker)-[A-Za-z0-9_-]+\.(?:js|css))$/.test(publicPath)) {
+      if (!/^(?:index\.html|THIRD_PARTY_NOTICES\.txt|manifest\.webmanifest|qr\.svg|icons\/(?:icon-192|icon-512|icon-maskable-512|apple-touch-icon)\.png|assets\/(?:index|document\.worker)-[A-Za-z0-9_-]+\.(?:js|css))$/.test(publicPath)) {
         throw new Error(`Unexpected public file: ${path}`);
       }
       if (/(?:\.env|package-lock|README|PRD|ACCEPTANCE|TASKS|AGENTS|test-results|golden)/i.test(path)) {

@@ -9,6 +9,7 @@ import ResearchDraftPanel from './features/ResearchDraftPanel';
 import CompetitionCatalogOverview from './features/CompetitionCatalogOverview';
 import PlainTextInput from './features/PlainTextInput';
 import InstallApp from './features/InstallApp';
+import QrApp from './features/QrApp';
 import { isPlainTextInput } from './domain/plain-text';
 import { isResearchDraftOptions, type ResearchDraftOptions, type ResearchDraftResult } from './domain/research';
 import { getEffectiveDraftProfile } from './domain/competitions';
@@ -605,6 +606,7 @@ function App() {
         </nav>
         <span className="version-tag">검사·초안 시험판</span>
         <InstallApp />
+        <QrApp />
       </header>
 
       <main id="main" tabIndex={-1} className={`main-content ${route === 'workspace' ? 'workspace-content' : ''}`}>
