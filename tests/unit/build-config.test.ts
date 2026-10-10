@@ -107,11 +107,12 @@ describe('the public artifact checks enforce the runtime contract', () => {
     expect(check(path, 'check-dist.mjs').status).not.toBe(0);
   });
 
-  it('accepts only the reviewed app-install manifest and icons', async () => {
+  it('accepts only the reviewed app-install manifest, icons, and QR image', async () => {
     const path = await workspace();
     await mkdir(join(path, 'dist/icons'), { recursive: true });
     await writeFile(join(path, 'dist/manifest.webmanifest'), JSON.stringify({ name: '한글 마감실', start_url: './#/start', icons: [{ src: 'icons/icon-192.png' }] }));
     for (const name of ['icon-192', 'icon-512', 'icon-maskable-512', 'apple-touch-icon']) await writeFile(join(path, `dist/icons/${name}.png`), 'synthetic png');
+    await writeFile(join(path, 'dist/qr.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
     expect(check(path, 'check-dist.mjs').status).toBe(0);
     await writeFile(join(path, 'dist/icons/other.png'), 'synthetic png');
     expect(check(path, 'check-dist.mjs').status).not.toBe(0);

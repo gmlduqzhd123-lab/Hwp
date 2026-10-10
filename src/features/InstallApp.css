@@ -1,5 +1,10 @@
 .site-header .install-button { min-height: 38px; padding: 7px 14px; gap: 6px; font-size: 13px; background: var(--green); color: #fff; white-space: nowrap; }
 .site-header .install-button:hover { background: #1c3d30; }
+.site-header .qr-button { min-height: 38px; padding: 7px 13px; gap: 6px; font-size: 13px; background: #fff; color: var(--green); border-color: #cfd9cd; white-space: nowrap; }
+.site-header .qr-button:hover { background: #f0f4ec; }
+.qr-dialog .install-dialog-body { text-align: center; }
+.qr-image { display: block; width: min(100%, 62vh, 420px); height: auto; margin: 8px auto; image-rendering: pixelated; }
+.qr-url { margin: 0 0 4px; font-family: ui-monospace, Menlo, Consolas, monospace; word-break: break-all; }
 .install-dialog { width: min(440px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid var(--line); border-radius: 16px; color: #253730; box-shadow: 0 24px 64px #1a2a2140; }
 .install-dialog::backdrop { background: #1a2a2199; }
 .install-dialog-body { padding: 24px 22px 20px; line-height: 1.7; font-size: 15px; word-break: keep-all; }
@@ -14,4 +19,5 @@
 @media (max-width: 680px) {
   .app-shell .site-header nav { flex: 1 1 auto; }
   .site-header .install-button { order: 4; min-height: 34px; padding: 5px 11px; font-size: 12px; }
+  .site-header .qr-button { order: 5; min-height: 34px; padding: 5px 10px; font-size: 12px; }
 }

@@ -30,3 +30,18 @@ test('the header install button opens device guidance and returns focus when clo
   await expect(dialog).toBeHidden();
   await expect(install).toBeFocused();
 });
+
+test('the header QR button shows the bundled QR image without network requests', async ({ page }) => {
+  await page.goto('./#/start');
+  const external: string[] = [];
+  page.on('request', (request) => { if (!request.url().startsWith(new URL('./', page.url()).origin)) external.push(request.url()); });
+  await page.getByRole('banner').getByRole('button', { name: 'QR 코드로 접속' }).click();
+  const dialog = page.getByRole('dialog', { name: '카메라로 찍어서 들어와요' });
+  await expect(dialog).toBeVisible();
+  const image = dialog.getByRole('img', { name: '한글 마감실 주소 QR 코드' });
+  await expect(image).toBeVisible();
+  expect(await image.evaluate((element: HTMLImageElement) => element.complete && element.naturalWidth > 0)).toBe(true);
+  await dialog.getByRole('button', { name: '닫기' }).click();
+  await expect(dialog).toBeHidden();
+  expect(external).toEqual([]);
+});
