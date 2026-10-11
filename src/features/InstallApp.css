@@ -15,9 +15,17 @@
 .install-dialog-note { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: #f0f4ec; color: var(--muted); font-size: 13px; }
 .install-dialog .install-external { display: flex; width: 100%; margin-top: 14px; }
 .install-dialog .install-close { width: 100%; margin-top: 16px; }
-/* 휴대폰: 메뉴 줄 오른쪽 끝에 둔다 */
+/* 휴대폰: 맨 윗줄 = 앱 이름 + 앱 설치·QR, 아랫줄 = 메뉴·시험판 표시 */
 @media (max-width: 680px) {
+  .app-shell .site-header { column-gap: 8px; }
   .app-shell .site-header nav { flex: 1 1 auto; }
-  .site-header .install-button { order: 4; min-height: 34px; padding: 5px 11px; font-size: 12px; }
-  .site-header .qr-button { order: 5; min-height: 34px; padding: 5px 10px; font-size: 12px; }
+  .site-header .install-button { order: 1; min-height: 34px; padding: 5px 11px; font-size: 12px; }
+  .site-header .qr-button { order: 2; min-height: 34px; padding: 5px 10px; font-size: 12px; }
+  .app-shell .site-header .version-tag { order: 4; }
+  .app-shell .site-header::before { content: ""; order: 3; flex-basis: 100%; height: 0; }
+}
+@media (max-width: 400px) {
+  .app-shell .site-header .brand { font-size: 17px; gap: 9px; }
+  .site-header .install-button { padding: 5px 9px; }
+  .site-header .qr-button { padding: 5px 8px; }
 }
