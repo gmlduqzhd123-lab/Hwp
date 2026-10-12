@@ -29,3 +29,6 @@
   .site-header .install-button { padding: 5px 9px; }
   .site-header .qr-button { padding: 5px 8px; }
 }
+/* 하단: 엽쌤 공통 저작권 · 모음집 링크 (한 줄 전체) */
+.site-footer .site-credit { flex-basis: 100%; margin: 0; font-size: 11px; color: #8a9586; }
+.site-footer .site-credit a { text-decoration: underline; text-underline-offset: 3px; }
